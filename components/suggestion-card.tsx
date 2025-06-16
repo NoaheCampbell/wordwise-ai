@@ -33,20 +33,20 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
   const getTypeColor = (type: string) => {
     switch (type) {
       case "tone":
-        return "bg-purple-100 text-purple-800 border-purple-200"
+        return "bg-purple-100 text-purple-900 border-purple-300"
       case "clarity":
-        return "bg-blue-100 text-blue-800 border-blue-200"
+        return "bg-blue-100 text-blue-900 border-blue-300"
       case "cta":
-        return "bg-green-100 text-green-800 border-green-200"
+        return "bg-green-100 text-green-900 border-green-300"
       case "conciseness":
-        return "bg-orange-100 text-orange-800 border-orange-200"
+        return "bg-orange-100 text-orange-900 border-orange-300"
       default:
-        return "bg-gray-100 text-gray-800 border-gray-200"
+        return "bg-gray-100 text-gray-900 border-gray-300"
     }
   }
 
   return (
-    <Card className="transition-all duration-200 hover:shadow-md border-gray-200">
+    <Card className="transition-all duration-200 hover:shadow-md border-gray-300 bg-white">
       <CardContent className="p-4">
         <div className="space-y-3">
           {/* Header */}
@@ -54,23 +54,23 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
             <div className="flex items-center gap-2">
               <span className="text-lg">{suggestion.icon}</span>
               <div>
-                <h3 className="font-medium text-gray-900 text-sm">{suggestion.title}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">{suggestion.title}</h3>
                 <Badge variant="outline" className={`text-xs mt-1 ${getTypeColor(suggestion.type)}`}>
                   {suggestion.type}
                 </Badge>
               </div>
             </div>
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-800">
               {suggestion.confidence}% confident
             </Badge>
           </div>
 
           {/* Description */}
-          <p className="text-sm text-gray-600 leading-relaxed">{suggestion.description}</p>
+          <p className="text-sm text-gray-700 leading-relaxed">{suggestion.description}</p>
 
           {/* Suggestion */}
-          <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <p className="text-sm text-gray-800 italic">{suggestion.suggestion}</p>
+          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+            <p className="text-sm text-gray-900 italic font-medium">{suggestion.suggestion}</p>
           </div>
 
           {/* Actions */}
@@ -79,7 +79,7 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-8 px-3 ${feedback === "up" ? "bg-green-100 text-green-700" : "text-gray-500 hover:text-green-600"}`}
+                className={`h-8 px-3 ${feedback === "up" ? "bg-green-100 text-green-700 hover:bg-green-200" : "text-gray-600 hover:text-green-600 hover:bg-green-50"}`}
                 onClick={() => setFeedback(feedback === "up" ? null : "up")}
               >
                 <ThumbsUp className="h-3 w-3" />
@@ -87,7 +87,7 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className={`h-8 px-3 ${feedback === "down" ? "bg-red-100 text-red-700" : "text-gray-500 hover:text-red-600"}`}
+                className={`h-8 px-3 ${feedback === "down" ? "bg-red-100 text-red-700 hover:bg-red-200" : "text-gray-600 hover:text-red-600 hover:bg-red-50"}`}
                 onClick={() => setFeedback(feedback === "down" ? null : "down")}
               >
                 <ThumbsDown className="h-3 w-3" />
@@ -97,7 +97,7 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 px-3 text-gray-500 hover:text-gray-700"
+              className="h-8 px-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100"
               onClick={handleCopy}
             >
               {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
