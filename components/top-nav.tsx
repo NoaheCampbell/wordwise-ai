@@ -1,0 +1,84 @@
+"use client"
+
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Plus, User, Settings, LogOut, CheckCircle } from "lucide-react"
+import { useUser, useClerk } from "@clerk/nextjs"
+
+export function TopNav() {
+  const { user } = useUser()
+  const { signOut } = useClerk()
+
+  const handleSignOut = () => {
+    signOut({ redirectUrl: "/login" })
+  }
+
+  return (
+    <header className="border-b border-gray-200 bg-white px-6 py-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <SidebarTrigger />
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-gray-900">WordWise AI</h1>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span>All changes saved</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Plus className="h-4 w-4 mr-2" />
+            New Document
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user?.imageUrl} alt={user?.fullName || "User"} />
+                  <AvatarFallback>
+                    {user?.fullName?.split(" ").map(n => n[0]).join("") || user?.firstName?.[0] || "U"}
+                  </AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <div className="flex items-center justify-start gap-2 p-2">
+                <div className="flex flex-col space-y-1 leading-none">
+                  <p className="font-medium">{user?.fullName || "User"}</p>
+                  <p className="w-[200px] truncate text-sm text-muted-foreground">
+                    {user?.emailAddresses[0]?.emailAddress || "No email"}
+                  </p>
+                </div>
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>
+                <User className="mr-2 h-4 w-4" />
+                <span>Profile</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Settings className="mr-2 h-4 w-4" />
+                <span>Settings</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Log out</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    </header>
+  )
+}

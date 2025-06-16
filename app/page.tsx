@@ -1,0 +1,60 @@
+"use client"
+
+import { SidebarProvider } from "@/components/ui/sidebar"
+import { DocumentSidebar } from "@/components/document-sidebar"
+import { TopNav } from "@/components/top-nav"
+import { Editor } from "@/components/editor"
+import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
+import { useUser } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
+
+export default function WritingApp() {
+  const { isLoaded, isSignedIn } = useUser()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.push("/login")
+    }
+  }, [isLoaded, isSignedIn, router])
+
+  // Show loading state while checking auth
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render the app if not signed in (middleware should handle this, but extra safety)
+  if (!isSignedIn) {
+    return null
+  }
+
+  return (
+    <SidebarProvider defaultOpen={true}>
+      <div className="flex min-h-screen w-full bg-gray-50">
+        <DocumentSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopNav />
+          <main className="flex-1 flex min-h-0">
+            {/* Main Editor Column */}
+            <div className="flex-[2] p-6 min-w-0">
+              <Editor />
+            </div>
+
+            {/* AI Suggestions Panel */}
+            <div className="flex-1 border-l border-gray-200 bg-white min-w-0">
+              <AISuggestionsPanel />
+            </div>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  )
+}

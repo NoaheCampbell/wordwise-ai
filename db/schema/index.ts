@@ -1,8 +1,7 @@
 /*
 <ai_context>
-Exports the database schema for the app.
+Exports all database schemas for easy importing.
 </ai_context>
 */
 
 export * from "./profiles-schema"
-export * from "./todos-schema"
