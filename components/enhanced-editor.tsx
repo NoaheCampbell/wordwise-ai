@@ -9,6 +9,12 @@ import { Undo, Redo, Save, Sparkles, Check, X } from "lucide-react"
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
 import { analyzeTextAction } from "@/actions/ai-analysis-actions"
 import { AISuggestion, AnalysisResult, SuggestionType } from "@/types"
+import { useRouter } from "next/navigation"
+import { useUser } from "@clerk/nextjs"
+import { useDocument } from "@/components/utilities/document-provider"
+import { createDocumentAction } from "@/actions/db/documents-actions"
+import { toast } from "sonner"
+import { Input } from "@/components/ui/input"
 
 interface HighlightedText {
   id: string
@@ -29,6 +35,10 @@ const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
 }
 
 export function EnhancedEditor() {
+  const router = useRouter()
+  const { user } = useUser()
+  const { reloadDocuments } = useDocument()
+  const [title, setTitle] = useState("Untitled Document")
   const [content, setContent] = useState(`Subject: Exciting Updates from Our AI Writing Assistant
 
 Dear Valued Subscribers,
@@ -48,6 +58,7 @@ The WordWise AI Team`)
 
   const [highlights, setHighlights] = useState<HighlightedText[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
@@ -114,6 +125,33 @@ The WordWise AI Team`)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleSave = async () => {
+    if (!user) {
+      toast.error("You must be logged in to save a document.")
+      return
+    }
+    if (!contentRef.current.trim()) {
+      toast.error("Cannot save an empty document.")
+      return
+    }
+
+    setIsSaving(true)
+
+    const result = await createDocumentAction({
+      title: title || "Untitled Document",
+      content: contentRef.current
+    })
+
+    if (result.isSuccess && result.data) {
+      toast.success("Document created successfully")
+      reloadDocuments()
+      router.push(`/document/${result.data.id}`)
+    } else {
+      toast.error(result.message || "Failed to create document")
+      setIsSaving(false)
+    }
+  }
 
   const analyzeText = async () => {
     if (!contentRef.current.trim()) return
@@ -426,6 +464,30 @@ The WordWise AI Team`)
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
+      {/* Document Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
+        <div className="flex items-center gap-3 flex-1">
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-lg font-semibold border-none bg-transparent p-0 focus-visible:ring-0 text-gray-900"
+            placeholder="Untitled Document"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            size="sm"
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
         <Button
@@ -447,14 +509,9 @@ The WordWise AI Team`)
           <Redo className="h-4 w-4" />
         </Button>
         <Separator orientation="vertical" className="h-6" />
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-          <Save className="h-4 w-4 mr-2" />
-          Save
-        </Button>
-        <Separator orientation="vertical" className="h-6" />
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={analyzeText}
           disabled={isAnalyzing || !hasManuallyEdited}
           className="text-blue-700 hover:text-blue-900 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -508,10 +565,8 @@ The WordWise AI Team`)
             }
             const newContent = e.currentTarget.innerText || ""
             
-            // This is the crucial change. We update a ref to hold the
-            // canonical content. This does NOT trigger a re-render.
             contentRef.current = newContent
-            // We update a separate state variable ONLY for the word count.
+            setContent(newContent)
             setContentForWordCount(newContent)
 
             // If the user starts typing, we assume they want to clear the
