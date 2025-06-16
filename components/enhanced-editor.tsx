@@ -364,7 +364,7 @@ The WordWise AI Team`)
             if (isUpdatingFromEffect.current) {
               return
             }
-            const newContent = e.currentTarget.textContent || ""
+            const newContent = e.currentTarget.innerText || ""
             setContent(newContent)
             setHighlights([])
           }}
@@ -383,7 +383,7 @@ The WordWise AI Team`)
           onBlur={() => {
             // Ensure content is synchronized
             if (textareaRef.current) {
-              const newContent = textareaRef.current.textContent || ""
+              const newContent = textareaRef.current.innerText || ""
               if (newContent !== content) {
                 setContent(newContent)
               }
