@@ -39,7 +39,8 @@ The WordWise AI Team`)
   const [highlights, setHighlights] = useState<HighlightedText[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [skipNextAnalysis, setSkipNextAnalysis] = useState(false)
+  const textareaRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
   const analyzeText = async () => {
@@ -75,6 +76,8 @@ The WordWise AI Team`)
       highlight.suggestion.suggestedText + 
       content.slice(highlight.end)
     
+    // Skip the next auto-analysis since we're applying a known good change
+    setSkipNextAnalysis(true)
     setContent(newContent)
     
     // Remove this highlight and adjust others
@@ -94,6 +97,7 @@ The WordWise AI Team`)
   const dismissSuggestion = (highlightId: string) => {
     setHighlights(prev => prev.filter(h => h.id !== highlightId))
     setSelectedSuggestion(null)
+    // No need to skip analysis for dismissals since content doesn't change
   }
 
   const getHighlightStyle = (type: SuggestionType) => {
@@ -125,17 +129,26 @@ The WordWise AI Team`)
         result.push(content.slice(lastIndex, highlight.start))
       }
 
-      // Add highlighted text
+      // Add highlighted text with zero-width spans to avoid layout changes
       const highlightedText = content.slice(highlight.start, highlight.end)
       result.push(
         <span
           key={highlight.id}
-          className={`cursor-pointer rounded px-1 ${getHighlightStyle(highlight.type)}`}
+          className={`cursor-pointer ${getHighlightStyle(highlight.type)} hover:opacity-80 transition-opacity`}
+          style={{
+            // Use background with no padding to avoid layout shifts
+            borderRadius: '2px',
+            margin: '0',
+            padding: '0',
+            lineHeight: 'inherit',
+            fontSize: 'inherit',
+            fontFamily: 'inherit'
+          }}
           onClick={(e) => {
             e.preventDefault()
             setSelectedSuggestion(highlight.suggestion)
           }}
-          title={`${highlight.suggestion.title}: ${highlight.suggestion.description}`}
+          title={`${highlight.suggestion.title}: "${highlight.suggestion.originalText}" → "${highlight.suggestion.suggestedText}"`}
         >
           {highlightedText}
         </span>
@@ -152,16 +165,91 @@ The WordWise AI Team`)
     return result
   }
 
+  const renderHighlightedHTML = () => {
+    if (highlights.length === 0) {
+      return content.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+    }
+
+    const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start)
+    let html = ""
+    let lastIndex = 0
+
+    sortedHighlights.forEach((highlight) => {
+      // Add text before highlight
+      if (highlight.start > lastIndex) {
+        const beforeText = content.slice(lastIndex, highlight.start)
+        html += beforeText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+      }
+
+      // Add highlighted text
+      const highlightedText = content.slice(highlight.start, highlight.end)
+      const escapedText = highlightedText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+      
+      html += `<span 
+        class="cursor-pointer ${getHighlightStyle(highlight.type)} hover:opacity-80 transition-opacity" 
+        style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
+        data-suggestion-id="${highlight.id}"
+        title="${highlight.suggestion.title}: &quot;${highlight.suggestion.originalText}&quot; → &quot;${highlight.suggestion.suggestedText}&quot;"
+      >${escapedText}</span>`
+
+      lastIndex = highlight.end
+    })
+
+    // Add remaining text
+    if (lastIndex < content.length) {
+      const remainingText = content.slice(lastIndex)
+      html += remainingText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+    }
+
+    return html
+  }
+
   // Auto-analyze when content changes (debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
+      if (skipNextAnalysis) {
+        // Reset the flag and skip this analysis
+        setSkipNextAnalysis(false)
+        return
+      }
+      
       if (content.trim()) {
         analyzeText()
       }
     }, 2000)
 
     return () => clearTimeout(timer)
-  }, [content])
+  }, [content, skipNextAnalysis])
+
+  // Update contentEditable when highlights change
+  useEffect(() => {
+    if (textareaRef.current) {
+      const newHTML = renderHighlightedHTML()
+      if (textareaRef.current.innerHTML !== newHTML) {
+        // Save cursor position
+        const selection = window.getSelection()
+        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+        
+        // Update content
+        textareaRef.current.innerHTML = newHTML
+        
+        // Restore cursor position (simplified)
+        if (range && selection) {
+          try {
+            selection.removeAllRanges()
+            selection.addRange(range)
+          } catch (e) {
+            // Fallback: place cursor at end
+            const newRange = document.createRange()
+            newRange.selectNodeContents(textareaRef.current)
+            newRange.collapse(false)
+            selection.removeAllRanges()
+            selection.addRange(newRange)
+          }
+        }
+      }
+    }
+  }, [highlights])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
@@ -196,33 +284,78 @@ The WordWise AI Team`)
         )}
       </div>
 
-      {/* Editor Area */}
-      <div className="flex-1 p-6 bg-white relative">
-        {/* Hidden textarea for input */}
-        <textarea
-          ref={textareaRef}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="absolute inset-6 w-[calc(100%-3rem)] h-[calc(100%-3rem)] resize-none border-none outline-none text-transparent bg-transparent leading-relaxed text-base font-normal placeholder:text-gray-400 z-10"
-          placeholder="Start writing your content here..."
-          style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
-            caretColor: 'black'
-          }}
-        />
-        
-        {/* Overlay for highlighted text */}
-        <div
-          ref={overlayRef}
-          className="absolute inset-6 w-[calc(100%-3rem)] h-[calc(100%-3rem)] overflow-hidden text-gray-900 leading-relaxed text-base font-normal whitespace-pre-wrap pointer-events-none z-5"
-          style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
-          }}
-        >
-          <div className="pointer-events-auto">
-            {renderHighlightedText()}
+      {/* Color Legend */}
+      {highlights.length > 0 && (
+        <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-gray-600 font-medium">Legend:</span>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-red-200 border-b-2 border-red-400 rounded-sm"></div>
+              <span className="text-gray-600">Grammar/Spelling</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-blue-200 border-b-2 border-blue-400 rounded-sm"></div>
+              <span className="text-gray-600">Clarity</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-orange-200 border-b-2 border-orange-400 rounded-sm"></div>
+              <span className="text-gray-600">Conciseness</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-purple-200 border-b-2 border-purple-400 rounded-sm"></div>
+              <span className="text-gray-600">Passive Voice</span>
+            </div>
           </div>
         </div>
+      )}
+
+      {/* Editor Area */}
+      <div className="flex-1 p-6 bg-white relative">
+        {/* ContentEditable div with highlighting */}
+        <div
+          ref={textareaRef}
+          contentEditable
+          suppressContentEditableWarning={true}
+          onInput={(e) => {
+            const newContent = e.currentTarget.textContent || ""
+            setContent(newContent)
+          }}
+          onClick={(e) => {
+            // Handle clicks on highlighted spans
+            const target = e.target as HTMLElement
+            if (target.dataset.suggestionId) {
+              e.preventDefault()
+              const suggestionId = target.dataset.suggestionId
+              const highlight = highlights.find(h => h.id === suggestionId)
+              if (highlight) {
+                setSelectedSuggestion(highlight.suggestion)
+              }
+            }
+          }}
+          onBlur={() => {
+            // Ensure content is synchronized
+            if (textareaRef.current) {
+              const newContent = textareaRef.current.textContent || ""
+              if (newContent !== content) {
+                setContent(newContent)
+              }
+            }
+          }}
+          className="w-full h-full resize-none border-none outline-none text-gray-900 bg-transparent leading-relaxed text-base font-normal focus:outline-none p-0 m-0"
+          style={{
+            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+            fontSize: '16px',
+            lineHeight: '1.625',
+            letterSpacing: 'normal',
+            wordSpacing: 'normal',
+            padding: '0',
+            margin: '0',
+            border: 'none',
+            whiteSpace: 'pre-wrap',
+            wordWrap: 'break-word'
+          }}
+          dangerouslySetInnerHTML={{ __html: renderHighlightedHTML() }}
+        />
       </div>
 
       {/* Word Count */}
