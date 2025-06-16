@@ -1,32 +1,34 @@
 /*
 <ai_context>
-This client page provides the signup form from Clerk with email verification functionality.
+This client page provides the forgot password form from Clerk.
 </ai_context>
 */
 
 "use client"
 
-import { SignUp } from "@clerk/nextjs"
+import { SignIn } from "@clerk/nextjs"
 import { dark } from "@clerk/themes"
 import { useTheme } from "next-themes"
 
-export default function SignUpPage() {
+export default function ForgotPasswordPage() {
   const { theme } = useTheme()
 
   return (
-    <SignUp
-      forceRedirectUrl="/"
-      fallbackRedirectUrl="/"
-      signInUrl="/login"
+    <SignIn
+      path="/forgot-password"
+      routing="path"
+      signUpUrl="/signup"
+      initialValues={{ emailAddress: "" }}
       appearance={{ 
         baseTheme: theme === "dark" ? dark : undefined,
         elements: {
           formButtonPrimary: "bg-blue-600 hover:bg-blue-700 text-white",
           card: "shadow-lg",
           headerTitle: "text-2xl font-bold",
-          headerSubtitle: "text-gray-600"
+          headerSubtitle: "text-gray-600",
+          formFieldInput: "border-gray-300 focus:border-blue-500 focus:ring-blue-500"
         }
       }}
     />
   )
-}
+} 

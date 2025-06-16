@@ -6,13 +6,28 @@ Sets up the database connection and schema.
 
 import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
-import { profilesTable } from "@/db/schema"
+import { 
+  profilesTable,
+  documentsTable,
+  suggestionsTable,
+  userPreferencesTable
+} from "@/db/schema"
 
+// Use Supabase connection string
 const connectionString = process.env.DATABASE_URL!
-const client = postgres(connectionString)
+
+// For production, you might want to configure connection pooling
+const client = postgres(connectionString, {
+  max: 10, // Maximum number of connections in the pool
+  idle_timeout: 20, // Close idle connections after 20 seconds
+  connect_timeout: 10, // Connection timeout in seconds
+})
 
 const schema = {
-  profiles: profilesTable
+  profiles: profilesTable,
+  documents: documentsTable,
+  suggestions: suggestionsTable,
+  userPreferences: userPreferencesTable
 }
 
 export const db = drizzle(client, { schema })

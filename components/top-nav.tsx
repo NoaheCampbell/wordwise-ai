@@ -12,13 +12,46 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Plus, User, Settings, LogOut, CheckCircle } from "lucide-react"
 import { useUser, useClerk } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import { createDocumentAction } from "@/actions/db/documents-actions"
+import { toast } from "sonner"
+import { useState } from "react"
 
 export function TopNav() {
   const { user } = useUser()
   const { signOut } = useClerk()
+  const router = useRouter()
+  const [isCreating, setIsCreating] = useState(false)
 
-  const handleSignOut = () => {
-    signOut({ redirectUrl: "/login" })
+  const handleSignOut = async () => {
+    try {
+      await signOut({ redirectUrl: "/login" })
+    } catch (error) {
+      console.error("Sign out error:", error)
+      // Fallback: navigate manually if the redirect fails
+      router.push("/login")
+    }
+  }
+
+  const handleNewDocument = async () => {
+    if (!user) return
+
+    setIsCreating(true)
+    
+    const result = await createDocumentAction({
+      title: "Untitled Document",
+      content: "",
+      tags: []
+    })
+
+    if (result.isSuccess) {
+      toast.success("New document created!")
+      router.push(`/document/${result.data.id}`)
+    } else {
+      toast.error("Failed to create document")
+    }
+
+    setIsCreating(false)
   }
 
   return (
@@ -36,9 +69,13 @@ export function TopNav() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white">
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={handleNewDocument}
+            disabled={isCreating}
+          >
             <Plus className="h-4 w-4 mr-2" />
-            New Document
+            {isCreating ? "Creating..." : "New Document"}
           </Button>
 
           <DropdownMenu>
@@ -62,11 +99,11 @@ export function TopNav() {
                 </div>
               </div>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/profile")}>
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push("/settings")}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>Settings</span>
               </DropdownMenuItem>

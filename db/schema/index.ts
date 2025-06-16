@@ -5,3 +5,6 @@ Exports all database schemas for easy importing.
 */
 
 export * from "./profiles-schema"
+export * from "./documents-schema"
+export * from "./suggestions-schema"
+export * from "./user-preferences-schema"

@@ -5,7 +5,7 @@ Phase 1: Foundation & Core Infrastructure
 Criteria: Essential systems required to power the writing assistant. All items are independent and can be implemented in any order.
 
 [ ] Feature 1: Authentication System
-[ ] Sub-feature 1.1: Implement Supabase authentication with email/password
+[ ] Sub-feature 1.1: Implement Clerk authentication with email/password
 [ ] Sub-feature 1.2: Enable secure login and token-based session management
 [ ] Sub-feature 1.3: Add password reset and email verification functionality
 

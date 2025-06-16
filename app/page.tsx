@@ -5,6 +5,7 @@ import { DocumentSidebar } from "@/components/document-sidebar"
 import { TopNav } from "@/components/top-nav"
 import { Editor } from "@/components/editor"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
+import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
 import { useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
@@ -42,6 +43,12 @@ export default function WritingApp() {
         <DocumentSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopNav />
+          
+          {/* Email verification banner */}
+          <div className="px-6 pt-4">
+            <EmailVerificationBanner />
+          </div>
+
           <main className="flex-1 flex min-h-0">
             {/* Main Editor Column */}
             <div className="flex-[2] p-6 min-w-0">

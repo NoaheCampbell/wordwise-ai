@@ -17,11 +17,43 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { FileText, Search, Filter, Calendar, TrendingUp, BarChart3, Plus } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
+import { createDocumentAction } from "@/actions/db/documents-actions"
+import { toast } from "sonner"
+import { useState } from "react"
 
 const tags = ["Newsletter", "Email", "Blog", "Product", "AI", "Tips", "Onboarding"]
 
 export function DocumentSidebar() {
   const { user } = useUser()
+  const router = useRouter()
+  const [isCreating, setIsCreating] = useState(false)
+
+  const handleNewDocument = async () => {
+    if (!user) return
+
+    setIsCreating(true)
+    
+    const result = await createDocumentAction({
+      title: "Untitled Document",
+      content: "",
+      tags: []
+    })
+
+    if (result.isSuccess) {
+      toast.success("New document created!")
+      router.push(`/document/${result.data.id}`)
+    } else {
+      toast.error("Failed to create document")
+    }
+
+    setIsCreating(false)
+  }
+
+  const handleTagClick = (tag: string) => {
+    // TODO: Implement tag filtering
+    console.log("Filtering by tag:", tag)
+  }
 
   return (
     <Sidebar className="border-r border-gray-300 bg-white">
@@ -71,6 +103,7 @@ export function DocumentSidebar() {
                   key={tag}
                   variant="secondary"
                   className="text-xs cursor-pointer hover:bg-gray-300 transition-colors bg-gray-200 text-gray-800 border border-gray-300"
+                  onClick={() => handleTagClick(tag)}
                 >
                   {tag}
                 </Badge>
@@ -91,9 +124,14 @@ export function DocumentSidebar() {
                 <p className="text-xs text-gray-600 mb-3">
                   Welcome {user?.firstName}! Create your first document to get started.
                 </p>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                <Button 
+                  size="sm" 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={handleNewDocument}
+                  disabled={isCreating}
+                >
                   <Plus className="h-3 w-3 mr-1" />
-                  New Document
+                  {isCreating ? "Creating..." : "New Document"}
                 </Button>
               </div>
             </SidebarMenu>
