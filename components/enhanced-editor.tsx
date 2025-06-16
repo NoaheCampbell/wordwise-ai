@@ -146,7 +146,11 @@ The WordWise AI Team`)
       (highlight.end - highlight.start)
     setHighlights((prev) =>
       prev
-        .filter((h) => h.id !== highlight.id)
+        .filter((h) => {
+          // Remove the applied highlight and any highlights that were contained within its original span.
+          const isContained = h.start >= highlight.start && h.end <= highlight.end
+          return !isContained
+        })
         .map((h) =>
           h.start > highlight.end
             ? {
