@@ -88,8 +88,6 @@ Return your response as a JSON array of objects with this exact structure:
 [
   {
     "type": "grammar" | "spelling",
-    "start": number,
-    "end": number,
     "originalText": "exact text with error",
     "suggestion": "corrected text",
     "message": "explanation of the error",
@@ -102,11 +100,12 @@ Text to analyze:
 
 Requirements:
 - Only identify actual errors, not style preferences
-- Be precise with start/end positions (character positions in the text)
+- Use the exact text from the original for "originalText" field
 - Provide clear, concise explanations
 - Include confidence scores (higher for obvious errors)
 - Return ONLY the JSON array, no markdown formatting, no explanations, no code blocks
 - Do not wrap in \`\`\`json or any other formatting
+- Do not include start/end positions, just the exact text
 `
 }
 
@@ -132,8 +131,6 @@ Return your response as a JSON array of objects with this exact structure:
 [
   {
     "type": "clarity" | "conciseness" | "passive-voice",
-    "start": number,
-    "end": number,
     "originalText": "exact text to improve",
     "suggestedText": "improved version",
     "explanation": "why this improvement helps",
@@ -146,11 +143,12 @@ Text to analyze:
 
 Requirements:
 - Only suggest meaningful improvements
-- Be precise with start/end positions (character positions in the text)
+- Use the exact text from the original for "originalText" field
 - Provide clear explanations for each suggestion
 - Include confidence scores
 - Return ONLY the JSON array, no markdown formatting, no explanations, no code blocks
 - Do not wrap in \`\`\`json or any other formatting
+- Do not include start/end positions, just the exact text
 `
 }
 
@@ -165,20 +163,48 @@ function parseGrammarResponse(response: string, originalText: string): GrammarEr
     const parsed = JSON.parse(cleanedResponse)
     if (!Array.isArray(parsed)) return []
 
+    const usedPositions = new Set<number>()
+    
     return parsed
-      .filter(item => item.type && item.start !== undefined && item.end !== undefined)
-      .map((item, index) => ({
-        id: `grammar-${index}`,
-        span: {
-          start: item.start,
-          end: item.end,
-          text: item.originalText || originalText.slice(item.start, item.end)
-        },
-        type: item.type as "grammar" | "spelling",
-        message: item.message || "Grammar or spelling error",
-        suggestion: item.suggestion || "",
-        confidence: Math.min(100, Math.max(0, item.confidence || 80))
-      }))
+      .filter(item => item.type && item.originalText && item.suggestion)
+      .map((item, index) => {
+        // Find the position of the originalText in the full text
+        // Try to find an unused position if there are duplicates
+        let start = -1
+        let searchFrom = 0
+        
+        while (true) {
+          const foundPos = originalText.indexOf(item.originalText, searchFrom)
+          if (foundPos === -1) break
+          
+          if (!usedPositions.has(foundPos)) {
+            start = foundPos
+            usedPositions.add(foundPos)
+            break
+          }
+          
+          searchFrom = foundPos + 1
+        }
+        
+        if (start === -1) {
+          console.warn(`Could not find unused position for "${item.originalText}" in original text`)
+          return null
+        }
+        
+        return {
+          id: `grammar-${index}`,
+          span: {
+            start,
+            end: start + item.originalText.length,
+            text: item.originalText
+          },
+          type: item.type as "grammar" | "spelling",
+          message: item.message || "Grammar or spelling error",
+          suggestion: item.suggestion || "",
+          confidence: Math.min(100, Math.max(0, item.confidence || 80))
+        }
+      })
+      .filter(Boolean) as GrammarError[]
   } catch (error) {
     console.error("Error parsing grammar response:", error)
     return []
@@ -196,21 +222,49 @@ function parseStyleResponse(response: string, originalText: string): StyleSugges
     const parsed = JSON.parse(cleanedResponse)
     if (!Array.isArray(parsed)) return []
 
+    const usedPositions = new Set<number>()
+    
     return parsed
-      .filter(item => item.type && item.start !== undefined && item.end !== undefined)
-      .map((item, index) => ({
-        id: `style-${index}`,
-        span: {
-          start: item.start,
-          end: item.end,
-          text: item.originalText || originalText.slice(item.start, item.end)
-        },
-        type: item.type as "clarity" | "conciseness" | "passive-voice",
-        originalText: item.originalText || originalText.slice(item.start, item.end),
-        suggestedText: item.suggestedText || "",
-        explanation: item.explanation || "Style improvement suggestion",
-        confidence: Math.min(100, Math.max(0, item.confidence || 75))
-      }))
+      .filter(item => item.type && item.originalText && item.suggestedText)
+      .map((item, index) => {
+        // Find the position of the originalText in the full text
+        // Try to find an unused position if there are duplicates
+        let start = -1
+        let searchFrom = 0
+        
+        while (true) {
+          const foundPos = originalText.indexOf(item.originalText, searchFrom)
+          if (foundPos === -1) break
+          
+          if (!usedPositions.has(foundPos)) {
+            start = foundPos
+            usedPositions.add(foundPos)
+            break
+          }
+          
+          searchFrom = foundPos + 1
+        }
+        
+        if (start === -1) {
+          console.warn(`Could not find unused position for "${item.originalText}" in original text`)
+          return null
+        }
+        
+        return {
+          id: `style-${index}`,
+          span: {
+            start,
+            end: start + item.originalText.length,
+            text: item.originalText
+          },
+          type: item.type as "clarity" | "conciseness" | "passive-voice",
+          originalText: item.originalText,
+          suggestedText: item.suggestedText || "",
+          explanation: item.explanation || "Style improvement suggestion",
+          confidence: Math.min(100, Math.max(0, item.confidence || 75))
+        }
+      })
+      .filter(Boolean) as StyleSuggestion[]
   } catch (error) {
     console.error("Error parsing style response:", error)
     return []
