@@ -6,7 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Undo, Redo, Save, Sparkles, Check, X } from "lucide-react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
 import { analyzeTextAction } from "@/actions/ai-analysis-actions"
 import { AISuggestion, AnalysisResult, SuggestionType } from "@/types"
 
@@ -53,6 +53,54 @@ The WordWise AI Team`)
   const textareaRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
+  const [history, setHistory] = useState<string[]>([])
+  const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
+  const isUndoRedoing = useRef(false)
+
+  // Debounce utility
+  const debounce = <T extends (...args: any[]) => any>(
+    func: T,
+    delay: number
+  ) => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    const debouncedFunc = function (...args: Parameters<T>) {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      timeoutId = setTimeout(() => {
+        func(...args)
+      }, delay)
+    }
+    debouncedFunc.cancel = () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+    return debouncedFunc
+  }
+
+  const updateHistory = (newContent: string) => {
+    if (newContent === history[currentHistoryIndex]) return
+    const newHistory = history.slice(0, currentHistoryIndex + 1)
+    newHistory.push(newContent)
+    setHistory(newHistory)
+    setCurrentHistoryIndex(newHistory.length - 1)
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedUpdateHistory = useCallback(
+    debounce((newContent: string) => {
+      updateHistory(newContent)
+    }, 1000),
+    [history, currentHistoryIndex]
+  )
+
+  // Initialize history
+  useEffect(() => {
+    if (content) {
+      setHistory([content])
+      setCurrentHistoryIndex(0)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const analyzeText = async () => {
     if (!content.trim()) return
@@ -82,33 +130,75 @@ The WordWise AI Team`)
   }
 
   const applySuggestion = (highlight: HighlightedText) => {
-    const newContent = 
-      content.slice(0, highlight.start) + 
-      highlight.suggestion.suggestedText + 
+    debouncedUpdateHistory.cancel()
+    const newContent =
+      content.slice(0, highlight.start) +
+      highlight.suggestion.suggestedText +
       content.slice(highlight.end)
-    
-    // Skip the next auto-analysis since we're applying a known good change
+
     setSkipNextAnalysis(true)
     setContent(newContent)
-    
+    updateHistory(newContent)
+
     // Remove this highlight and adjust others
-    const adjustment = highlight.suggestion.suggestedText.length - (highlight.end - highlight.start)
-    setHighlights(prev => 
+    const adjustment =
+      highlight.suggestion.suggestedText.length -
+      (highlight.end - highlight.start)
+    setHighlights((prev) =>
       prev
-        .filter(h => h.id !== highlight.id)
-        .map(h => h.start > highlight.end ? {
-          ...h,
-          start: h.start + adjustment,
-          end: h.end + adjustment
-        } : h)
+        .filter((h) => h.id !== highlight.id)
+        .map((h) =>
+          h.start > highlight.end
+            ? {
+                ...h,
+                start: h.start + adjustment,
+                end: h.end + adjustment
+              }
+            : h
+        )
     )
     setSelectedSuggestion(null)
   }
 
   const dismissSuggestion = (highlightId: string) => {
-    setHighlights(prev => prev.filter(h => h.id !== highlightId))
+    setHighlights((prev) => prev.filter((h) => h.id !== highlightId))
     setSelectedSuggestion(null)
-    // No need to skip analysis for dismissals since content doesn't change
+  }
+
+  const handleUndo = () => {
+    if (currentHistoryIndex > 0) {
+      isUndoRedoing.current = true
+      const newIndex = currentHistoryIndex - 1
+      setCurrentHistoryIndex(newIndex)
+      setContent(history[newIndex])
+      setHighlights([])
+    }
+  }
+
+  const handleRedo = () => {
+    if (currentHistoryIndex < history.length - 1) {
+      isUndoRedoing.current = true
+      const newIndex = currentHistoryIndex + 1
+      setCurrentHistoryIndex(newIndex)
+      setContent(history[newIndex])
+      setHighlights([])
+    }
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0
+    const isUndo = (isMac ? e.metaKey : e.ctrlKey) && e.key === "z" && !e.shiftKey
+    const isRedo =
+      (isMac && e.metaKey && e.shiftKey && e.key === "z") ||
+      (!isMac && e.ctrlKey && e.key === "y")
+
+    if (isUndo) {
+      e.preventDefault()
+      handleUndo()
+    } else if (isRedo) {
+      e.preventDefault()
+      handleRedo()
+    }
   }
 
   const getHighlightStyle = (type: SuggestionType) => {
@@ -258,7 +348,8 @@ The WordWise AI Team`)
 
   // Update contentEditable when highlights change
   useEffect(() => {
-    if (isUpdatingFromEffect.current) {
+    if (isUpdatingFromEffect.current || isUndoRedoing.current) {
+      isUndoRedoing.current = false
       return
     }
 
@@ -299,10 +390,22 @@ The WordWise AI Team`)
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
       {/* Toolbar */}
       <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleUndo}
+          disabled={currentHistoryIndex <= 0}
+          className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+        >
           <Undo className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleRedo}
+          disabled={currentHistoryIndex >= history.length - 1}
+          className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+        >
           <Redo className="h-4 w-4" />
         </Button>
         <Separator orientation="vertical" className="h-6" />
@@ -360,6 +463,7 @@ The WordWise AI Team`)
           ref={textareaRef}
           contentEditable
           suppressContentEditableWarning={true}
+          onKeyDown={handleKeyDown}
           onInput={(e) => {
             if (isUpdatingFromEffect.current) {
               return
@@ -367,6 +471,7 @@ The WordWise AI Team`)
             const newContent = e.currentTarget.innerText || ""
             setContent(newContent)
             setHighlights([])
+            debouncedUpdateHistory(newContent)
           }}
           onClick={(e) => {
             // Handle clicks on highlighted spans
