@@ -6,18 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react"
 import { useState } from "react"
 
-interface Suggestion {
-  id: number
-  type: string
-  title: string
-  description: string
-  suggestion: string
-  confidence: number
-  icon: string
-}
+import { AISuggestion } from "@/types"
 
 interface SuggestionCardProps {
-  suggestion: Suggestion
+  suggestion: AISuggestion
 }
 
 export function SuggestionCard({ suggestion }: SuggestionCardProps) {
@@ -25,7 +17,7 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(suggestion.suggestion)
+    navigator.clipboard.writeText(suggestion.suggestedText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -70,7 +62,7 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
 
           {/* Suggestion */}
           <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-            <p className="text-sm text-gray-900 italic font-medium">{suggestion.suggestion}</p>
+            <p className="text-sm text-gray-900 italic font-medium">{suggestion.suggestedText}</p>
           </div>
 
           {/* Actions */}

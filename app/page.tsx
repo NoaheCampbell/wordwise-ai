@@ -3,7 +3,7 @@
 import { SidebarProvider } from "@/components/ui/sidebar"
 import { DocumentSidebar } from "@/components/document-sidebar"
 import { TopNav } from "@/components/top-nav"
-import { Editor } from "@/components/editor"
+import { EnhancedEditor } from "@/components/enhanced-editor"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
 import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
 import { useUser } from "@clerk/nextjs"
@@ -52,7 +52,7 @@ export default function WritingApp() {
           <main className="flex-1 flex min-h-0">
             {/* Main Editor Column */}
             <div className="flex-[2] p-6 min-w-0">
-              <Editor />
+              <EnhancedEditor />
             </div>
 
             {/* AI Suggestions Panel */}

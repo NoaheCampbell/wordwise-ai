@@ -4,19 +4,19 @@ import { SuggestionCard } from "@/components/suggestion-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sparkles, RefreshCw } from "lucide-react"
+import { AISuggestion } from "@/types"
 
-interface Suggestion {
-  id: number
-  type: string
-  title: string
-  description: string
-  suggestion: string
-  confidence: number
-  icon: string
+interface AISuggestionsPanelProps {
+  suggestions?: AISuggestion[]
+  onRefresh?: () => void
+  isAnalyzing?: boolean
 }
 
-export function AISuggestionsPanel() {
-  const suggestions: Suggestion[] = [] // Mock data removed
+export function AISuggestionsPanel({ 
+  suggestions = [], 
+  onRefresh,
+  isAnalyzing = false 
+}: AISuggestionsPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -27,8 +27,14 @@ export function AISuggestionsPanel() {
             <Sparkles className="h-5 w-5 text-blue-600" />
             <h2 className="font-semibold text-gray-900">AI Suggestions</h2>
           </div>
-          <Button variant="ghost" size="sm" className="text-gray-600 hover:text-gray-900 hover:bg-gray-100">
-            <RefreshCw className="h-4 w-4" />
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={onRefresh}
+            disabled={isAnalyzing}
+            className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+          >
+            <RefreshCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
         <div className="flex gap-2">
