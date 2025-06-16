@@ -49,10 +49,10 @@ The WordWise AI Team`)
   const [highlights, setHighlights] = useState<HighlightedText[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
-  const [skipNextAnalysis, setSkipNextAnalysis] = useState(false)
   const textareaRef = useRef<HTMLDivElement>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
+  const contentRef = useRef(content)
+  contentRef.current = content
   const [history, setHistory] = useState<string[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
   const isUndoRedoing = useRef(false)
@@ -93,6 +93,14 @@ The WordWise AI Team`)
     [history, currentHistoryIndex]
   )
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const debouncedAnalyzeText = useCallback(
+    debounce(() => {
+      analyzeText()
+    }, 2000),
+    []
+  )
+
   // Initialize history
   useEffect(() => {
     if (content) {
@@ -103,23 +111,30 @@ The WordWise AI Team`)
   }, [])
 
   const analyzeText = async () => {
-    if (!content.trim()) return
+    if (!contentRef.current.trim()) return
 
     setIsAnalyzing(true)
     try {
       const result = await analyzeTextAction({
-        text: content,
-        analysisTypes: ["grammar", "spelling", "clarity", "conciseness", "passive-voice"]
+        text: contentRef.current,
+        analysisTypes: [
+          "grammar",
+          "spelling",
+          "clarity",
+          "conciseness",
+          "passive-voice"
+        ]
       })
 
       if (result.isSuccess && result.data) {
-        const newHighlights: HighlightedText[] = result.data.overallSuggestions.map(suggestion => ({
-          id: suggestion.id,
-          start: suggestion.span?.start || 0,
-          end: suggestion.span?.end || 0,
-          type: suggestion.type,
-          suggestion
-        }))
+        const newHighlights: HighlightedText[] =
+          result.data.overallSuggestions.map((suggestion) => ({
+            id: suggestion.id,
+            start: suggestion.span?.start || 0,
+            end: suggestion.span?.end || 0,
+            type: suggestion.type,
+            suggestion
+          }))
         setHighlights(newHighlights)
       }
     } catch (error) {
@@ -131,18 +146,30 @@ The WordWise AI Team`)
 
   const applySuggestion = (highlight: HighlightedText) => {
     debouncedUpdateHistory.cancel()
+    debouncedAnalyzeText.cancel()
+
+    let { suggestedText } = highlight.suggestion
+    const { originalText } = highlight.suggestion
+
+    // Preserve leading/trailing spaces if the AI's suggestion unintentionally removes them.
+    if (originalText.startsWith(" ") && !suggestedText.startsWith(" ")) {
+      suggestedText = " " + suggestedText
+    }
+    if (originalText.endsWith(" ") && !suggestedText.endsWith(" ")) {
+      suggestedText = suggestedText + " "
+    }
+
     const newContent =
       content.slice(0, highlight.start) +
-      highlight.suggestion.suggestedText +
+      suggestedText +
       content.slice(highlight.end)
 
-    setSkipNextAnalysis(true)
     setContent(newContent)
     updateHistory(newContent)
 
     // Remove this highlight and adjust others
     const adjustment =
-      highlight.suggestion.suggestedText.length -
+      suggestedText.length -
       (highlight.end - highlight.start)
     setHighlights((prev) =>
       prev
@@ -170,6 +197,8 @@ The WordWise AI Team`)
   }
 
   const handleUndo = () => {
+    debouncedAnalyzeText.cancel()
+    debouncedUpdateHistory.cancel()
     if (currentHistoryIndex > 0) {
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex - 1
@@ -180,6 +209,8 @@ The WordWise AI Team`)
   }
 
   const handleRedo = () => {
+    debouncedAnalyzeText.cancel()
+    debouncedUpdateHistory.cancel()
     if (currentHistoryIndex < history.length - 1) {
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex + 1
@@ -333,23 +364,6 @@ The WordWise AI Team`)
     return html
   }
 
-  // Auto-analyze when content changes (debounced)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (skipNextAnalysis) {
-        // Reset the flag and skip this analysis
-        setSkipNextAnalysis(false)
-        return
-      }
-      
-      if (content.trim()) {
-        analyzeText()
-      }
-    }, 2000)
-
-    return () => clearTimeout(timer)
-  }, [content, skipNextAnalysis])
-
   // Update contentEditable when highlights change
   useEffect(() => {
     if (isUpdatingFromEffect.current || isUndoRedoing.current) {
@@ -476,6 +490,7 @@ The WordWise AI Team`)
             setContent(newContent)
             setHighlights([])
             debouncedUpdateHistory(newContent)
+            debouncedAnalyzeText()
           }}
           onClick={(e) => {
             // Handle clicks on highlighted spans
