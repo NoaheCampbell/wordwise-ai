@@ -5,46 +5,19 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sparkles, RefreshCw } from "lucide-react"
 
-const suggestions = [
-  {
-    id: 1,
-    type: "tone",
-    title: "Tone Adjustment",
-    description: "Consider making the opening more enthusiastic to match your exciting news.",
-    suggestion: 'Try: "We\'re absolutely thrilled to share some game-changing updates..."',
-    confidence: 85,
-    icon: "🎯",
-  },
-  {
-    id: 2,
-    type: "clarity",
-    title: "Clarity Improvement",
-    description: "The sentence about engagement rates could be more specific.",
-    suggestion: 'Specify the timeframe: "increased engagement rates by up to 40% within the first month"',
-    confidence: 92,
-    icon: "💡",
-  },
-  {
-    id: 3,
-    type: "cta",
-    title: "Call-to-Action",
-    description: "Add a clear next step for readers to take action.",
-    suggestion: 'Consider adding: "Ready to experience these improvements? Update your account today!"',
-    confidence: 78,
-    icon: "🚀",
-  },
-  {
-    id: 4,
-    type: "conciseness",
-    title: "Conciseness",
-    description: "The closing could be more direct and impactful.",
-    suggestion: 'Simplify to: "Happy writing!" or "Write better, engage more."',
-    confidence: 71,
-    icon: "✂️",
-  },
-]
+interface Suggestion {
+  id: number
+  type: string
+  title: string
+  description: string
+  suggestion: string
+  confidence: number
+  icon: string
+}
 
 export function AISuggestionsPanel() {
+  const suggestions: Suggestion[] = [] // Mock data removed
+
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
@@ -60,7 +33,7 @@ export function AISuggestionsPanel() {
         </div>
         <div className="flex gap-2">
           <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-700">
-            4 suggestions
+            {suggestions.length} suggestions
           </Badge>
           <Badge variant="outline" className="text-xs text-green-700 border-green-300 bg-green-50">
             High confidence
@@ -70,9 +43,16 @@ export function AISuggestionsPanel() {
 
       {/* Suggestions List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-        {suggestions.map((suggestion) => (
-          <SuggestionCard key={suggestion.id} suggestion={suggestion} />
-        ))}
+        {suggestions.length > 0 ? (
+          suggestions.map((suggestion) => (
+            <SuggestionCard key={suggestion.id} suggestion={suggestion} />
+          ))
+        ) : (
+          <div className="text-center text-gray-500 mt-8">
+            <p>No suggestions available.</p>
+            <p className="text-sm">Suggestions will appear here as you write.</p>
+          </div>
+        )}
       </div>
 
       {/* Footer */}
