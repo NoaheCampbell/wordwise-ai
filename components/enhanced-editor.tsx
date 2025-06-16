@@ -18,6 +18,16 @@ interface HighlightedText {
   suggestion: AISuggestion
 }
 
+const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
+  spelling: 1,
+  grammar: 2,
+  "passive-voice": 3,
+  conciseness: 4,
+  clarity: 5,
+  tone: 6,
+  cta: 7
+}
+
 export function EnhancedEditor() {
   const [content, setContent] = useState(`Subject: Exciting Updates from Our AI Writing Assistant
 
@@ -42,6 +52,7 @@ The WordWise AI Team`)
   const [skipNextAnalysis, setSkipNextAnalysis] = useState(false)
   const textareaRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
+  const isUpdatingFromEffect = useRef(false)
 
   const analyzeText = async () => {
     if (!content.trim()) return
@@ -167,40 +178,64 @@ The WordWise AI Team`)
 
   const renderHighlightedHTML = () => {
     if (highlights.length === 0) {
-      return content.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+      return content.replace(/\n/g, "<br>")
     }
 
-    const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start)
-    let html = ""
-    let lastIndex = 0
-
-    sortedHighlights.forEach((highlight) => {
-      // Add text before highlight
-      if (highlight.start > lastIndex) {
-        const beforeText = content.slice(lastIndex, highlight.start)
-        html += beforeText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
-      }
-
-      // Add highlighted text
-      const highlightedText = content.slice(highlight.start, highlight.end)
-      const escapedText = highlightedText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
-      
-      html += `<span 
-        class="cursor-pointer ${getHighlightStyle(highlight.type)} hover:opacity-80 transition-opacity" 
-        style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
-        data-suggestion-id="${highlight.id}"
-        title="${highlight.suggestion.title}: &quot;${highlight.suggestion.originalText}&quot; → &quot;${highlight.suggestion.suggestedText}&quot;"
-      >${escapedText}</span>`
-
-      lastIndex = highlight.end
+    // 1. Get all unique boundary points
+    const points = new Set([0, content.length])
+    highlights.forEach((h) => {
+      points.add(h.start)
+      points.add(h.end)
     })
+    const sortedPoints = Array.from(points).sort((a, b) => a - b)
 
-    // Add remaining text
-    if (lastIndex < content.length) {
-      const remainingText = content.slice(lastIndex)
-      html += remainingText.replace(/\n/g, '<br>').replace(/ /g, '&nbsp;')
+    let html = ""
+
+    // 2. Iterate through segments defined by points
+    for (let i = 0; i < sortedPoints.length - 1; i++) {
+      const start = sortedPoints[i]
+      const end = sortedPoints[i + 1]
+
+      if (start >= end) continue // Skip zero-length or invalid segments
+
+      const segmentText = content.slice(start, end)
+      const escapedSegmentText = segmentText.replace(/\n/g, "<br>")
+
+      // 3. Find all highlights covering this segment
+      const coveringHighlights = highlights.filter(
+        (h) => h.start <= start && h.end >= end
+      )
+
+      if (coveringHighlights.length > 0) {
+        // 4. Determine the highest-priority suggestion for styling
+        const topHighlight = coveringHighlights.reduce((prev, curr) =>
+          SUGGESTION_PRIORITY[prev.type] < SUGGESTION_PRIORITY[curr.type]
+            ? prev
+            : curr
+        )
+
+        // 5. Create a title that lists all suggestions for the segment
+        const allTitles = coveringHighlights
+          .map(
+            (h) =>
+              `${h.suggestion.title} (${h.type}): "${h.suggestion.originalText}" → "${h.suggestion.suggestedText}"`
+          )
+          .join("\n")
+
+        // 6. Build the span with the top highlight's style and all titles
+        html += `<span 
+          class="cursor-pointer ${getHighlightStyle(
+            topHighlight.type
+          )} hover:opacity-80 transition-opacity" 
+          style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
+          data-suggestion-id="${topHighlight.suggestion.id}"
+          title="${allTitles}"
+        >${escapedSegmentText}</span>`
+      } else {
+        // No highlights for this segment
+        html += escapedSegmentText
+      }
     }
-
     return html
   }
 
@@ -223,6 +258,10 @@ The WordWise AI Team`)
 
   // Update contentEditable when highlights change
   useEffect(() => {
+    if (isUpdatingFromEffect.current) {
+      return
+    }
+
     if (textareaRef.current) {
       const newHTML = renderHighlightedHTML()
       if (textareaRef.current.innerHTML !== newHTML) {
@@ -230,7 +269,7 @@ The WordWise AI Team`)
         const selection = window.getSelection()
         const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
         
-        // Update content
+        isUpdatingFromEffect.current = true
         textareaRef.current.innerHTML = newHTML
         
         // Restore cursor position (simplified)
@@ -247,9 +286,14 @@ The WordWise AI Team`)
             selection.addRange(newRange)
           }
         }
+        
+        // Use a microtask to reset the flag after the DOM has been updated.
+        queueMicrotask(() => {
+          isUpdatingFromEffect.current = false
+        })
       }
     }
-  }, [highlights])
+  }, [highlights, content])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
@@ -317,8 +361,12 @@ The WordWise AI Team`)
           contentEditable
           suppressContentEditableWarning={true}
           onInput={(e) => {
+            if (isUpdatingFromEffect.current) {
+              return
+            }
             const newContent = e.currentTarget.textContent || ""
             setContent(newContent)
+            setHighlights([])
           }}
           onClick={(e) => {
             // Handle clicks on highlighted spans
