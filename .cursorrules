@@ -17,8 +17,6 @@ This is a web app template.
 - Frontend: Next.js, Tailwind, Shadcn, Framer Motion
 - Backend: Postgres, Supabase, Drizzle ORM, Server Actions
 - Auth: Clerk
-- Payments: Stripe
-- Analytics: PostHog
 - Deployment: Vercel
 
 ## Project Structure
@@ -197,7 +195,7 @@ export async function ExampleServerComponent({
 ##### Client Components
 
 - Use `"use client"` at the top of the file
-- Client components can safely rely on props passed down from server components, or handle UI interactions without needing <Suspense> if there’s no async logic.
+- Client components can safely rely on props passed down from server components, or handle UI interactions without needing <Suspense> if there's no async logic.
 - Never use server actions in client components. If you need to create a new server action, create it in `/actions`
 
 Example of a client page:
@@ -482,18 +480,6 @@ It uses Clerk for authentication.
 
 - Import the auth helper with `import { auth } from "@clerk/nextjs/server"` in server components
 - await the auth helper in server actions
-
-### Payments Rules
-
-Follow these rules when working on payments.
-
-It uses Stripe for payments.
-
-### Analytics Rules
-
-Follow these rules when working on analytics.
-
-It uses PostHog for analytics.
 
 # Storage Rules
 

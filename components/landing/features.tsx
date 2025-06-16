@@ -29,24 +29,34 @@ interface FeatureProps {
 
 const features: FeatureProps[] = [
   {
-    title: "Frontend",
-    description: "Next.js, Tailwind, Shadcn, Framer Motion",
-    icon: AppWindow
-  },
-  {
-    title: "Backend",
-    description: "Postgres, Supabase, Drizzle ORM, Server Actions",
-    icon: Database
-  },
-  {
-    title: "Auth",
-    description: "Clerk",
+    title: "Clerk",
+    description: "Authentication",
     icon: Shield
   },
   {
-    title: "Payments",
-    description: "Stripe",
-    icon: DollarSign
+    title: "Drizzle",
+    description: "ORM",
+    icon: Database
+  },
+  {
+    title: "Postgres",
+    description: "Database",
+    icon: Database
+  },
+  {
+    title: "Shadcn",
+    description: "UI",
+    icon: AppWindow
+  },
+  {
+    title: "Next.js",
+    description: "Framework",
+    icon: AppWindow
+  },
+  {
+    title: "Tailwind",
+    description: "Styling",
+    icon: AppWindow
   }
 ]
 
@@ -66,7 +76,7 @@ const FeatureCard = ({ title, description, icon: Icon }: FeatureProps) => (
   </motion.div>
 )
 
-export const FeaturesSection = () => {
+export function Features() {
   return (
     <section className="mt-20 bg-gradient-to-b from-gray-50 to-white py-20 dark:from-gray-800 dark:to-gray-900">
       <div className="container mx-auto px-4">

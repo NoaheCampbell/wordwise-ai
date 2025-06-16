@@ -16,10 +16,10 @@ import { ActionState } from "@/types"
 import { eq } from "drizzle-orm"
 
 export async function createProfileAction(
-  data: InsertProfile
+  profile: InsertProfile
 ): Promise<ActionState<SelectProfile>> {
   try {
-    const [newProfile] = await db.insert(profilesTable).values(data).returning()
+    const [newProfile] = await db.insert(profilesTable).values(profile).returning()
     return {
       isSuccess: true,
       message: "Profile created successfully",
@@ -31,12 +31,12 @@ export async function createProfileAction(
   }
 }
 
-export async function getProfileByUserIdAction(
-  userId: string
+export async function getProfileAction(
+  id: string
 ): Promise<ActionState<SelectProfile>> {
   try {
     const profile = await db.query.profiles.findFirst({
-      where: eq(profilesTable.userId, userId)
+      where: eq(profilesTable.id, id)
     })
     if (!profile) {
       return { isSuccess: false, message: "Profile not found" }
@@ -54,14 +54,14 @@ export async function getProfileByUserIdAction(
 }
 
 export async function updateProfileAction(
-  userId: string,
+  id: string,
   data: Partial<InsertProfile>
 ): Promise<ActionState<SelectProfile>> {
   try {
     const [updatedProfile] = await db
       .update(profilesTable)
       .set(data)
-      .where(eq(profilesTable.userId, userId))
+      .where(eq(profilesTable.id, id))
       .returning()
 
     if (!updatedProfile) {
@@ -79,43 +79,9 @@ export async function updateProfileAction(
   }
 }
 
-export async function updateProfileByStripeCustomerIdAction(
-  stripeCustomerId: string,
-  data: Partial<InsertProfile>
-): Promise<ActionState<SelectProfile>> {
+export async function deleteProfileAction(id: string): Promise<ActionState<void>> {
   try {
-    const [updatedProfile] = await db
-      .update(profilesTable)
-      .set(data)
-      .where(eq(profilesTable.stripeCustomerId, stripeCustomerId))
-      .returning()
-
-    if (!updatedProfile) {
-      return {
-        isSuccess: false,
-        message: "Profile not found by Stripe customer ID"
-      }
-    }
-
-    return {
-      isSuccess: true,
-      message: "Profile updated by Stripe customer ID successfully",
-      data: updatedProfile
-    }
-  } catch (error) {
-    console.error("Error updating profile by stripe customer ID:", error)
-    return {
-      isSuccess: false,
-      message: "Failed to update profile by Stripe customer ID"
-    }
-  }
-}
-
-export async function deleteProfileAction(
-  userId: string
-): Promise<ActionState<void>> {
-  try {
-    await db.delete(profilesTable).where(eq(profilesTable.userId, userId))
+    await db.delete(profilesTable).where(eq(profilesTable.id, id))
     return {
       isSuccess: true,
       message: "Profile deleted successfully",

@@ -6,38 +6,40 @@ The root server layout for the app.
 
 import {
   createProfileAction,
-  getProfileByUserIdAction
+  getProfileAction
 } from "@/actions/db/profiles-actions"
-import { Toaster } from "@/components/ui/toaster"
-import { PostHogPageview } from "@/components/utilities/posthog/posthog-pageview"
-import { PostHogUserIdentify } from "@/components/utilities/posthog/posthog-user-identity"
 import { Providers } from "@/components/utilities/providers"
-import { TailwindIndicator } from "@/components/utilities/tailwind-indicator"
 import { cn } from "@/lib/utils"
 import { ClerkProvider } from "@clerk/nextjs"
-import { auth } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import { Toaster } from "sonner"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "Mckay's App Template",
-  description: "A full-stack web app template."
+  title: "Wordwise",
+  description: "The AI-powered language learning platform."
 }
 
 export default async function RootLayout({
   children
-}: {
+}: Readonly<{
   children: React.ReactNode
-}) {
+}>) {
   const { userId } = await auth()
-
   if (userId) {
-    const profileRes = await getProfileByUserIdAction(userId)
-    if (!profileRes.isSuccess) {
-      await createProfileAction({ userId })
+    const profile = await getProfileAction(userId)
+    if (!profile.isSuccess) {
+      const user = await currentUser()
+      if (user) {
+        const email = user.emailAddresses[0]?.emailAddress
+        if (email) {
+          await createProfileAction({ id: userId, email })
+        }
+      }
     }
   }
 
@@ -46,23 +48,14 @@ export default async function RootLayout({
       <html lang="en" suppressHydrationWarning>
         <body
           className={cn(
-            "bg-background mx-auto min-h-screen w-full scroll-smooth antialiased",
-            inter.className
+            "bg-background font-sans antialiased",
+            inter.variable
           )}
         >
-          <Providers
-            attribute="class"
-            defaultTheme="light"
-            enableSystem={false}
-            disableTransitionOnChange
-          >
-            <PostHogUserIdentify />
-            <PostHogPageview />
-
-            {children}
-
-            <TailwindIndicator />
-
+          <Providers>
+            <div className="relative flex min-h-screen flex-col">
+              <main className="flex-1">{children}</main>
+            </div>
             <Toaster />
           </Providers>
         </body>

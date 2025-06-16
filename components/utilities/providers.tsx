@@ -6,17 +6,17 @@ This client component provides the providers for the app.
 
 "use client"
 
-import { TooltipProvider } from "@/components/ui/tooltip"
-import { ThemeProvider as NextThemesProvider } from "next-themes"
-import { ThemeProviderProps } from "next-themes/dist/types"
-import { CSPostHogProvider } from "./posthog/posthog-provider"
+import { ThemeProvider } from "next-themes"
 
-export const Providers = ({ children, ...props }: ThemeProviderProps) => {
+export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <NextThemesProvider {...props}>
-      <TooltipProvider>
-        <CSPostHogProvider>{children}</CSPostHogProvider>
-      </TooltipProvider>
-    </NextThemesProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      {children}
+    </ThemeProvider>
   )
 }

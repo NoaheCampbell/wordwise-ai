@@ -6,7 +6,7 @@ This server page is the marketing homepage.
 
 "use server"
 
-import { FeaturesSection } from "@/components/landing/features"
+import { Features } from "@/components/landing/features"
 import { HeroSection } from "@/components/landing/hero"
 
 export default async function HomePage() {
@@ -14,7 +14,7 @@ export default async function HomePage() {
     <div className="pb-20">
       <HeroSection />
       {/* social proof */}
-      <FeaturesSection />
+      <Features />
       {/* pricing */}
       {/* faq */}
       {/* blog */}

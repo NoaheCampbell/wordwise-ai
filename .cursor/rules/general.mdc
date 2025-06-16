@@ -1,7 +1,9 @@
 ---
 description: Follow these rules for all requests.
 globs: 
+alwaysApply: false
 ---
+# Project Instructions
 # Project Instructions
 
 Use specification and guidelines as you build the app.
@@ -21,8 +23,6 @@ This is a web app template.
 - Frontend: Next.js, Tailwind, Shadcn, Framer Motion
 - Backend: Postgres, Supabase, Drizzle ORM, Server Actions
 - Auth: Clerk
-- Payments: Stripe
-- Analytics: PostHog
 - Deployment: Vercel
 
 ## Project Structure
@@ -93,4 +93,10 @@ And exporting it:
 ```ts
 export * from "./actions-types"
 ```
+
+- auth: Follow these rules when working on auth.
+- backend: Follow these rules when working on the backend.
+- frontend: Follow these rules when working on the frontend.
+- general: Follow these rules for all requests.
+- storage: Follow these rules when working on file storage.
 
