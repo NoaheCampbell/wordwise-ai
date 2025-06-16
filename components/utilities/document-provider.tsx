@@ -7,6 +7,7 @@ import {
 import { getDocumentsAction } from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema"
 import { useUser } from "@clerk/nextjs"
+import { usePathname } from "next/navigation"
 import {
   createContext,
   ReactNode,
@@ -32,6 +33,7 @@ const DocumentContext = createContext<DocumentContextType | undefined>(undefined
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const { user } = useUser()
+  const pathname = usePathname()
   const [documents, setDocuments] = useState<SelectDocument[]>([])
   const [clarityScore, setClarityScore] = useState<number | null>(null)
   const [liveClarityScore, setLiveClarityScore] = useState<number | null>(null)
@@ -78,7 +80,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       setClarityScore(null)
       setLiveClarityScore(null)
     }
-  }, [user, reloadDocuments, reloadClarityScore])
+  }, [user, reloadDocuments, reloadClarityScore, pathname])
 
   return (
     <DocumentContext.Provider
