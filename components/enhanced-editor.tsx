@@ -56,6 +56,7 @@ The WordWise AI Team`)
   const [history, setHistory] = useState<string[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
   const isUndoRedoing = useRef(false)
+  const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
 
   // Debounce utility
   const debounce = <T extends (...args: any[]) => any>(
@@ -127,6 +128,7 @@ The WordWise AI Team`)
       })
 
       if (result.isSuccess && result.data) {
+        setHasManuallyEdited(false)
         const newHighlights: HighlightedText[] =
           result.data.overallSuggestions.map((suggestion) => ({
             id: suggestion.id,
@@ -436,8 +438,8 @@ The WordWise AI Team`)
           variant="ghost" 
           size="sm" 
           onClick={analyzeText}
-          disabled={isAnalyzing}
-          className="text-blue-700 hover:text-blue-900 hover:bg-blue-100"
+          disabled={isAnalyzing || !hasManuallyEdited}
+          className="text-blue-700 hover:text-blue-900 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles className={`h-4 w-4 mr-2 ${isAnalyzing ? 'animate-spin' : ''}`} />
           {isAnalyzing ? 'Analyzing...' : 'Analyze'}
@@ -489,6 +491,7 @@ The WordWise AI Team`)
             const newContent = e.currentTarget.innerText || ""
             setContent(newContent)
             setHighlights([])
+            setHasManuallyEdited(true)
             debouncedUpdateHistory(newContent)
             debouncedAnalyzeText()
           }}
