@@ -51,8 +51,12 @@ The WordWise AI Team`)
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
+  
+  // Use a ref to hold the canonical content string. This avoids re-rendering on every keystroke.
   const contentRef = useRef(content)
-  contentRef.current = content
+  // Use a separate state variable just for the word count and other UI elements that need to update on input.
+  const [contentForWordCount, setContentForWordCount] = useState(content)
+
   const [history, setHistory] = useState<string[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
   const isUndoRedoing = useRef(false)
@@ -162,11 +166,15 @@ The WordWise AI Team`)
     }
 
     const newContent =
-      content.slice(0, highlight.start) +
+      contentRef.current.slice(0, highlight.start) +
       suggestedText +
-      content.slice(highlight.end)
-
+      contentRef.current.slice(highlight.end)
+    
+    // Programmatically update the content and the ref
+    contentRef.current = newContent
     setContent(newContent)
+    setContentForWordCount(newContent)
+
     updateHistory(newContent)
 
     // Remove this highlight and adjust others
@@ -198,6 +206,48 @@ The WordWise AI Team`)
     setSelectedSuggestion(null)
   }
 
+  const getCursorPosition = (element: Node | null): number => {
+    if (!element) return 0
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      const preCaretRange = range.cloneRange()
+      preCaretRange.selectNodeContents(element)
+      preCaretRange.setEnd(range.endContainer, range.endOffset)
+      return preCaretRange.toString().length
+    }
+    return 0
+  }
+
+  const setCursorPosition = (element: Node | null, position: number) => {
+    if (!element) return
+    const range = document.createRange()
+    const selection = window.getSelection()
+    let charIndex = 0
+    const nodeStack: Node[] = [element]
+    let node: Node | undefined
+
+    while ((node = nodeStack.pop())) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const nextCharIndex = charIndex + node.textContent!.length
+        if (position >= charIndex && position <= nextCharIndex) {
+          range.setStart(node, position - charIndex)
+          range.collapse(true)
+          if (selection) {
+            selection.removeAllRanges()
+            selection.addRange(range)
+          }
+          return
+        }
+        charIndex = nextCharIndex
+      } else if (node.childNodes && node.childNodes.length > 0) {
+        for (let i = node.childNodes.length - 1; i >= 0; i--) {
+          nodeStack.push(node.childNodes[i])
+        }
+      }
+    }
+  }
+
   const handleUndo = () => {
     debouncedAnalyzeText.cancel()
     debouncedUpdateHistory.cancel()
@@ -205,7 +255,12 @@ The WordWise AI Team`)
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex - 1
       setCurrentHistoryIndex(newIndex)
-      setContent(history[newIndex])
+      
+      const newContent = history[newIndex]
+      contentRef.current = newContent
+      setContent(newContent) // This triggers the rendering useEffect
+      setContentForWordCount(newContent)
+
       setHighlights([])
     }
   }
@@ -217,7 +272,12 @@ The WordWise AI Team`)
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex + 1
       setCurrentHistoryIndex(newIndex)
-      setContent(history[newIndex])
+
+      const newContent = history[newIndex]
+      contentRef.current = newContent
+      setContent(newContent) // This triggers the rendering useEffect
+      setContentForWordCount(newContent)
+
       setHighlights([])
     }
   }
@@ -254,62 +314,21 @@ The WordWise AI Team`)
     }
   }
 
-  const renderHighlightedText = () => {
-    if (highlights.length === 0) return content
-
-    const sortedHighlights = [...highlights].sort((a, b) => a.start - b.start)
-    let result = []
-    let lastIndex = 0
-
-    sortedHighlights.forEach((highlight, index) => {
-      // Add text before highlight
-      if (highlight.start > lastIndex) {
-        result.push(content.slice(lastIndex, highlight.start))
-      }
-
-      // Add highlighted text with zero-width spans to avoid layout changes
-      const highlightedText = content.slice(highlight.start, highlight.end)
-      result.push(
-        <span
-          key={highlight.id}
-          className={`cursor-pointer ${getHighlightStyle(highlight.type)} hover:opacity-80 transition-opacity`}
-          style={{
-            // Use background with no padding to avoid layout shifts
-            borderRadius: '2px',
-            margin: '0',
-            padding: '0',
-            lineHeight: 'inherit',
-            fontSize: 'inherit',
-            fontFamily: 'inherit'
-          }}
-          onClick={(e) => {
-            e.preventDefault()
-            setSelectedSuggestion(highlight.suggestion)
-          }}
-          title={`${highlight.suggestion.title}: "${highlight.suggestion.originalText}" → "${highlight.suggestion.suggestedText}"`}
-        >
-          {highlightedText}
-        </span>
-      )
-
-      lastIndex = highlight.end
-    })
-
-    // Add remaining text
-    if (lastIndex < content.length) {
-      result.push(content.slice(lastIndex))
-    }
-
-    return result
-  }
-
   const renderHighlightedHTML = () => {
+    // This escape function is basic but should prevent XSS from content.
+    // It preserves newline characters, which is important for us.
+    const escape = (text: string) =>
+      text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+
     if (highlights.length === 0) {
-      return content.replace(/\n/g, "<br>")
+      return escape(contentRef.current)
     }
 
     // 1. Get all unique boundary points
-    const points = new Set([0, content.length])
+    const points = new Set([0, contentRef.current.length])
     highlights.forEach((h) => {
       points.add(h.start)
       points.add(h.end)
@@ -325,8 +344,8 @@ The WordWise AI Team`)
 
       if (start >= end) continue // Skip zero-length or invalid segments
 
-      const segmentText = content.slice(start, end)
-      const escapedSegmentText = segmentText.replace(/\n/g, "<br>")
+      const segmentText = contentRef.current.slice(start, end)
+      const escapedSegmentText = escape(segmentText)
 
       // 3. Find all highlights covering this segment
       const coveringHighlights = highlights.filter(
@@ -356,7 +375,7 @@ The WordWise AI Team`)
           )} hover:opacity-80 transition-opacity" 
           style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
           data-suggestion-id="${topHighlight.suggestion.id}"
-          title="${allTitles}"
+          title="${escape(allTitles)}"
         >${escapedSegmentText}</span>`
       } else {
         // No highlights for this segment
@@ -366,7 +385,7 @@ The WordWise AI Team`)
     return html
   }
 
-  // Update contentEditable when highlights change
+  // This effect synchronizes the DOM -> state and updates highlights
   useEffect(() => {
     if (isUpdatingFromEffect.current || isUndoRedoing.current) {
       isUndoRedoing.current = false
@@ -374,37 +393,36 @@ The WordWise AI Team`)
     }
 
     if (textareaRef.current) {
+      // Use the content from the ref, not state, to build the HTML
       const newHTML = renderHighlightedHTML()
       if (textareaRef.current.innerHTML !== newHTML) {
-        // Save cursor position
-        const selection = window.getSelection()
-        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+        const cursorPosition = getCursorPosition(textareaRef.current)
         
         isUpdatingFromEffect.current = true
         textareaRef.current.innerHTML = newHTML
         
-        // Restore cursor position (simplified)
-        if (range && selection) {
-          try {
-            selection.removeAllRanges()
-            selection.addRange(range)
-          } catch (e) {
-            // Fallback: place cursor at end
-            const newRange = document.createRange()
-            newRange.selectNodeContents(textareaRef.current)
-            newRange.collapse(false)
-            selection.removeAllRanges()
-            selection.addRange(newRange)
-          }
-        }
+        setCursorPosition(textareaRef.current, cursorPosition)
         
-        // Use a microtask to reset the flag after the DOM has been updated.
         queueMicrotask(() => {
           isUpdatingFromEffect.current = false
         })
       }
     }
+    // The dependency array is key. This effect now only runs when
+    // highlights change, or when content is changed programmatically
+    // by undo/redo or applying a suggestion.
   }, [highlights, content])
+
+  useEffect(() => {
+    if (textareaRef.current && !textareaRef.current.innerHTML) {
+      isUpdatingFromEffect.current = true
+      textareaRef.current.innerHTML = renderHighlightedHTML()
+      queueMicrotask(() => {
+        isUpdatingFromEffect.current = false
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
@@ -489,8 +507,21 @@ The WordWise AI Team`)
               return
             }
             const newContent = e.currentTarget.innerText || ""
-            setContent(newContent)
-            setHighlights([])
+            
+            // This is the crucial change. We update a ref to hold the
+            // canonical content. This does NOT trigger a re-render.
+            contentRef.current = newContent
+            // We update a separate state variable ONLY for the word count.
+            setContentForWordCount(newContent)
+
+            // If the user starts typing, we assume they want to clear the
+            // highlights and we let the browser control the DOM.
+            if(highlights.length > 0) {
+              // This will trigger a one-time re-render to remove the highlight spans.
+              // Future typing will not trigger this.
+              setHighlights([])
+            }
+
             setHasManuallyEdited(true)
             debouncedUpdateHistory(newContent)
             debouncedAnalyzeText()
@@ -511,8 +542,9 @@ The WordWise AI Team`)
             // Ensure content is synchronized
             if (textareaRef.current) {
               const newContent = textareaRef.current.innerText || ""
-              if (newContent !== content) {
-                setContent(newContent)
+              if (newContent !== contentRef.current) {
+                contentRef.current = newContent
+                setContentForWordCount(newContent)
               }
             }
           }}
@@ -529,14 +561,13 @@ The WordWise AI Team`)
             whiteSpace: 'pre-wrap',
             wordWrap: 'break-word'
           }}
-          dangerouslySetInnerHTML={{ __html: renderHighlightedHTML() }}
         />
       </div>
 
       {/* Word Count */}
       <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600 flex justify-between items-center">
         <span>
-          {content.split(" ").filter((word) => word.length > 0).length} words • {content.length} characters
+          {contentForWordCount.split(" ").filter((word) => word.length > 0).length} words • {contentForWordCount.length} characters
         </span>
         {isAnalyzing && (
           <span className="text-blue-600">
