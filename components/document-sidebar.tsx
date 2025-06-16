@@ -15,43 +15,34 @@ import {
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { FileText, Search, Filter, Calendar, TrendingUp, BarChart3, Plus } from "lucide-react"
+import { FileText, Search, Filter, TrendingUp, BarChart3, Plus } from "lucide-react"
 import { useUser } from "@clerk/nextjs"
-import { useRouter } from "next/navigation"
-import { createDocumentAction, getDocumentsAction } from "@/actions/db/documents-actions"
-import { SelectDocument } from "@/db/schema/documents-schema"
+import { useRouter, usePathname } from "next/navigation"
+import { createDocumentAction } from "@/actions/db/documents-actions"
 import { toast } from "sonner"
-import { useState, useEffect } from "react"
+import { useState } from "react"
+import { useDocument } from "@/components/utilities/document-provider"
 
 const tags = ["Newsletter", "Email", "Blog", "Product", "AI", "Tips", "Onboarding"]
 
 export function DocumentSidebar() {
   const { user } = useUser()
   const router = useRouter()
+  const pathname = usePathname()
   const [isCreating, setIsCreating] = useState(false)
-  const [documents, setDocuments] = useState<SelectDocument[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { 
+    documents, 
+    clarityScore, 
+    liveClarityScore, 
+    isLoading, 
+    isLoadingLiveScore, 
+    reloadDocuments, 
+    reloadClarityScore 
+  } = useDocument()
 
-  useEffect(() => {
-    if (user) {
-      loadDocuments()
-    }
-  }, [user])
-
-  const loadDocuments = async () => {
-    if (!user) return
-
-    setIsLoading(true)
-    const result = await getDocumentsAction(user.id)
-    
-    if (result.isSuccess) {
-      setDocuments(result.data)
-    } else {
-      toast.error("Failed to load documents")
-    }
-    
-    setIsLoading(false)
-  }
+  const onDocumentPage = pathname.includes("/document/")
+  const displayScore = onDocumentPage ? liveClarityScore : clarityScore
+  const isScoreLoading = onDocumentPage ? isLoadingLiveScore : isLoading
 
   const handleNewDocument = async () => {
     if (!user) return
@@ -66,9 +57,9 @@ export function DocumentSidebar() {
 
     if (result.isSuccess) {
       toast.success("New document created!")
+      reloadDocuments()
+      reloadClarityScore()
       router.push(`/document/${result.data.id}`)
-      // Refresh the documents list
-      loadDocuments()
     } else {
       toast.error("Failed to create document")
     }
@@ -91,8 +82,8 @@ export function DocumentSidebar() {
     const diffTime = Math.abs(now.getTime() - date.getTime())
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
     
-    if (diffDays === 1) return "Today"
-    if (diffDays === 2) return "Yesterday"
+    if (diffDays <= 1) return "Today"
+    if (diffDays <= 2) return "Yesterday"
     if (diffDays <= 7) return `${diffDays - 1} days ago`
     return date.toLocaleDateString()
   }
@@ -117,7 +108,13 @@ export function DocumentSidebar() {
             <div className="grid grid-cols-2 gap-2 p-2">
               <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
                 <TrendingUp className="h-4 w-4 text-blue-700 mx-auto mb-1" />
-                <div className="text-sm font-semibold text-blue-900">--</div>
+                <div className="text-sm font-semibold text-blue-900">
+                  {isScoreLoading ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-blue-600 mx-auto" />
+                  ) : (
+                    displayScore ?? "--"
+                  )}
+                </div>
                 <div className="text-xs text-blue-700 font-medium">Clarity Score</div>
               </div>
               <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
@@ -206,7 +203,7 @@ export function DocumentSidebar() {
                           <p className="text-sm font-medium text-gray-900 truncate">
                             {document.title || "Untitled Document"}
                           </p>
-                                                     <p className="text-xs text-gray-600">
+                           <p className="text-xs text-gray-600">
                              {formatDate(document.updatedAt.toString())}
                            </p>
                         </div>

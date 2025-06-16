@@ -15,6 +15,8 @@ import { ArrowLeft, Save, Settings, Undo, Redo } from "lucide-react"
 import { getDocumentAction, updateDocumentAction } from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema/documents-schema"
 import { toast } from "sonner"
+import { useDocument } from "@/components/utilities/document-provider"
+import { useDebounce } from "use-debounce"
 
 export default function DocumentPage() {
   const params = useParams()
@@ -25,12 +27,26 @@ export default function DocumentPage() {
   const [content, setContent] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const {
+    reloadDocuments,
+    reloadClarityScore,
+    updateLiveClarityScore,
+    clearLiveClarityScore
+  } = useDocument()
+  const [debouncedContent] = useDebounce(content, 500)
 
   useEffect(() => {
     if (user && params.id) {
       loadDocument()
     }
-  }, [user, params.id])
+    return () => {
+      clearLiveClarityScore()
+    }
+  }, [user, params.id, clearLiveClarityScore])
+
+  useEffect(() => {
+    updateLiveClarityScore(debouncedContent)
+  }, [debouncedContent, updateLiveClarityScore])
 
   const loadDocument = async () => {
     if (!user || !params.id) return
@@ -63,6 +79,8 @@ export default function DocumentPage() {
     if (result.isSuccess) {
       toast.success("Document saved successfully")
       setDocument(result.data)
+      reloadDocuments()
+      reloadClarityScore()
     } else {
       toast.error("Failed to save document")
     }

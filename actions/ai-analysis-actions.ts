@@ -2,6 +2,12 @@
 
 import { ActionState, AnalysisResult, AnalyzeTextRequest, GrammarError, StyleSuggestion, AISuggestion, SuggestionType } from "@/types"
 import OpenAI from "openai"
+import { getDocumentAction } from "./db/documents-actions"
+import readability from "text-readability-ts"
+import { db } from "@/db/db"
+import { documentsTable } from "@/db/schema"
+import { eq } from "drizzle-orm"
+import { auth } from "@clerk/nextjs/server"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -320,4 +326,78 @@ function generateOverallSuggestions(
   })
 
   return suggestions
+}
+
+export async function calculateClarityScoreForTextAction(
+  text: string
+): Promise<ActionState<number | null>> {
+  try {
+    if (!text || text.trim().split(/\s+/).length < 3) {
+      return { isSuccess: true, message: "Not enough content to analyze", data: null }
+    }
+
+    const score = readability.fleschReadingEase(text)
+    const clarityScore = Math.round(Math.max(0, Math.min(score, 100)))
+    
+    return {
+      isSuccess: true,
+      message: "Clarity score calculated",
+      data: clarityScore
+    }
+  } catch (error) {
+    console.error("Error calculating clarity score for text:", error)
+    return { isSuccess: false, message: "Failed to calculate clarity score" }
+  }
+}
+
+export async function getAverageClarityScoreAction(): Promise<
+  ActionState<number | null>
+> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const documents = await db.query.documents.findMany({
+      where: eq(documentsTable.userId, userId),
+    })
+
+    const docsWithEnoughContent = documents.filter(doc => {
+      if (!doc.content) return false
+      const wordCount = doc.content.trim().split(/\s+/).length
+      return wordCount >= 3
+    })
+
+    if (docsWithEnoughContent.length === 0) {
+      return {
+        isSuccess: true,
+        message: "No documents with enough content to score",
+        data: null
+      }
+    }
+
+    const scores = docsWithEnoughContent
+      .map(doc => readability.fleschReadingEase(doc.content as string))
+      .filter(score => !isNaN(score))
+
+    if (scores.length > 0) {
+      const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length
+      const clarityScore = Math.round(Math.max(0, Math.min(averageScore, 100)))
+      return {
+        isSuccess: true,
+        message: "Clarity score calculated",
+        data: clarityScore
+      }
+    } else {
+      return {
+        isSuccess: true,
+        message: "Could not calculate score",
+        data: null
+      }
+    }
+  } catch (error) {
+    console.error("Error calculating clarity score:", error)
+    return { isSuccess: false, message: "Failed to calculate clarity score" }
+  }
 } 
