@@ -3,7 +3,7 @@
 import { db } from "@/db/db"
 import { InsertDocument, SelectDocument, documentsTable } from "@/db/schema/documents-schema"
 import { ActionState } from "@/types"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 
 export async function createDocumentAction(
@@ -111,9 +111,14 @@ export async function deleteDocumentAction(
   userId: string
 ): Promise<ActionState<void>> {
   try {
-    await db
+    const result = await db
       .delete(documentsTable)
-      .where(eq(documentsTable.id, id))
+      .where(and(eq(documentsTable.id, id), eq(documentsTable.userId, userId)))
+      .returning({ id: documentsTable.id })
+
+    if (result.length === 0) {
+      return { isSuccess: false, message: "Document not found or you don't have permission to delete it" }
+    }
 
     return {
       isSuccess: true,

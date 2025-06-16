@@ -11,12 +11,28 @@ import { DocumentSidebar } from "@/components/document-sidebar"
 import { TopNav } from "@/components/top-nav"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
 import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
-import { ArrowLeft, Save, Settings, Undo, Redo } from "lucide-react"
-import { getDocumentAction, updateDocumentAction } from "@/actions/db/documents-actions"
+import { ArrowLeft, Save, Settings, Undo, Redo, Trash2 } from "lucide-react"
+import { getDocumentAction, updateDocumentAction, deleteDocumentAction } from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema/documents-schema"
 import { toast } from "sonner"
 import { useDocument } from "@/components/utilities/document-provider"
 import { useDebounce } from "use-debounce"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function DocumentPage() {
   const params = useParams()
@@ -27,6 +43,8 @@ export default function DocumentPage() {
   const [content, setContent] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false)
   const {
     reloadDocuments,
     reloadClarityScore,
@@ -86,6 +104,22 @@ export default function DocumentPage() {
     }
 
     setIsSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!user || !document) return
+
+    setIsDeleting(true)
+    const result = await deleteDocumentAction(document.id, user.id)
+    setIsDeleting(false)
+
+    if (result.isSuccess) {
+      toast.success("Document deleted successfully")
+      reloadDocuments()
+      router.push("/")
+    } else {
+      toast.error(result.message)
+    }
   }
 
   if (isLoading) {
@@ -163,9 +197,22 @@ export default function DocumentPage() {
                       {isSaving ? "Saving..." : "Save"}
                     </Button>
                     
-                    <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => setShowDeleteAlert(true)}
+                          className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
@@ -211,6 +258,27 @@ export default function DocumentPage() {
           </main>
         </div>
       </div>
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the
+              document and remove all associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarProvider>
   )
 } 
