@@ -428,7 +428,7 @@ The WordWise AI Team`)
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{selectedSuggestion.icon}</span>
                   <div>
-                    <h3 className="font-semibold text-gray-900">{selectedSuggestion.title}</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{selectedSuggestion.title}</h3>
                     <Badge variant="outline" className="text-xs mt-1">
                       {selectedSuggestion.type}
                     </Badge>
@@ -443,20 +443,20 @@ The WordWise AI Team`)
                 </Button>
               </div>
 
-              <p className="text-sm text-gray-700 mb-4">{selectedSuggestion.description}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{selectedSuggestion.description}</p>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-500">Original:</label>
-                  <div className="bg-red-50 rounded p-2 text-sm border border-red-200">
-                    {selectedSuggestion.originalText}
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">Original:</label>
+                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+                    <del>{selectedSuggestion.originalText}</del>
                   </div>
                 </div>
                 
                 <div>
-                  <label className="text-xs font-medium text-gray-500">Suggested:</label>
-                  <div className="bg-green-50 rounded p-2 text-sm border border-green-200">
-                    {selectedSuggestion.suggestedText}
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">Suggested:</label>
+                  <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-200">
+                    <strong>{selectedSuggestion.suggestedText}</strong>
                   </div>
                 </div>
               </div>
