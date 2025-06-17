@@ -5,16 +5,36 @@ import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Undo, Redo, Save, Sparkles, Check, X } from "lucide-react"
+import { Undo, Redo, Save, Sparkles, Check, X, Trash2, Settings, ArrowLeft } from "lucide-react"
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
 import { analyzeTextAction } from "@/actions/ai-analysis-actions"
-import { AISuggestion, AnalysisResult, SuggestionType } from "@/types"
+import { AISuggestion, AnalysisResult, SuggestionType, SelectDocument } from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { useDocument } from "@/components/utilities/document-provider"
-import { createDocumentAction } from "@/actions/db/documents-actions"
+import { createDocumentAction, updateDocumentAction, deleteDocumentAction } from "@/actions/db/documents-actions"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+interface EnhancedEditorProps {
+  initialDocument?: SelectDocument
+}
 
 interface HighlightedText {
   id: string
@@ -34,38 +54,25 @@ const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
   cta: 7
 }
 
-export function EnhancedEditor() {
+export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const router = useRouter()
   const { user } = useUser()
-  const { reloadDocuments } = useDocument()
-  const [title, setTitle] = useState("Untitled Document")
-  const [content, setContent] = useState(`Subject: Exciting Updates from Our AI Writing Assistant
-
-Dear Valued Subscribers,
-
-We're thrilled to share some incredible updates about WordWise AI that will revolutionize your writing experience.
-
-Our latest features include:
-• Advanced grammar and style suggestions
-• Real-time tone analysis
-• Improved clarity recommendations
-• Enhanced call-to-action optimization
-
-These improvements have helped our users increase their engagement rates by up to 40%. We believe these tools will help you create more compelling content that resonates with your audience.
-
-Best regards,
-The WordWise AI Team`)
+  const { reloadDocuments, reloadClarityScore } = useDocument()
+  
+  const [document, setDocument] = useState<SelectDocument | null>(initialDocument || null)
+  const [title, setTitle] = useState(initialDocument?.title || "Untitled Document")
+  const [content, setContent] = useState(initialDocument?.content || "")
 
   const [highlights, setHighlights] = useState<HighlightedText[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteAlert, setShowDeleteAlert] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
   
-  // Use a ref to hold the canonical content string. This avoids re-rendering on every keystroke.
   const contentRef = useRef(content)
-  // Use a separate state variable just for the word count and other UI elements that need to update on input.
   const [contentForWordCount, setContentForWordCount] = useState(content)
 
   const [history, setHistory] = useState<string[]>([])
@@ -73,7 +80,18 @@ The WordWise AI Team`)
   const isUndoRedoing = useRef(false)
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
 
-  // Debounce utility
+  useEffect(() => {
+    if (initialDocument) {
+      setDocument(initialDocument)
+      setTitle(initialDocument.title)
+      setContent(initialDocument.content || "")
+      contentRef.current = initialDocument.content || ""
+      setContentForWordCount(initialDocument.content || "")
+      setHistory([initialDocument.content || ""])
+      setCurrentHistoryIndex(0)
+    }
+  }, [initialDocument])
+
   const debounce = <T extends (...args: any[]) => any>(
     func: T,
     delay: number
@@ -101,7 +119,6 @@ The WordWise AI Team`)
     setCurrentHistoryIndex(newHistory.length - 1)
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedUpdateHistory = useCallback(
     debounce((newContent: string) => {
       updateHistory(newContent)
@@ -109,7 +126,6 @@ The WordWise AI Team`)
     [history, currentHistoryIndex]
   )
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedAnalyzeText = useCallback(
     debounce(() => {
       analyzeText()
@@ -117,13 +133,11 @@ The WordWise AI Team`)
     []
   )
 
-  // Initialize history
   useEffect(() => {
     if (content) {
       setHistory([content])
       setCurrentHistoryIndex(0)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleSave = async () => {
@@ -131,25 +145,59 @@ The WordWise AI Team`)
       toast.error("You must be logged in to save a document.")
       return
     }
-    if (!contentRef.current.trim()) {
+    if (!contentRef.current.trim() && !title.trim()) {
       toast.error("Cannot save an empty document.")
       return
     }
 
     setIsSaving(true)
 
-    const result = await createDocumentAction({
-      title: title || "Untitled Document",
-      content: contentRef.current
-    })
-
-    if (result.isSuccess && result.data) {
-      toast.success("Document created successfully")
-      reloadDocuments()
-      router.push(`/document/${result.data.id}`)
+    if (document) {
+      // Update existing document
+      const result = await updateDocumentAction(
+        document.id,
+        { title, content: contentRef.current },
+        user.id
+      )
+      if (result.isSuccess) {
+        toast.success("Document updated successfully")
+        setDocument(result.data)
+        reloadDocuments()
+        reloadClarityScore()
+      } else {
+        toast.error("Failed to update document")
+      }
     } else {
-      toast.error(result.message || "Failed to create document")
-      setIsSaving(false)
+      // Create new document
+      const result = await createDocumentAction({
+        title: title || "Untitled Document",
+        content: contentRef.current
+      })
+      if (result.isSuccess && result.data) {
+        toast.success("Document created successfully")
+        reloadDocuments()
+        router.push(`/document/${result.data.id}`)
+      } else {
+        toast.error(result.message || "Failed to create document")
+      }
+    }
+
+    setIsSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!user || !document) return
+
+    setIsDeleting(true)
+    const result = await deleteDocumentAction(document.id, user.id)
+    setIsDeleting(false)
+
+    if (result.isSuccess) {
+      toast.success("Document deleted successfully")
+      reloadDocuments()
+      router.push("/")
+    } else {
+      toast.error(result.message)
     }
   }
 
@@ -195,7 +243,6 @@ The WordWise AI Team`)
     let { suggestedText } = highlight.suggestion
     const { originalText } = highlight.suggestion
 
-    // Preserve leading/trailing spaces if the AI's suggestion unintentionally removes them.
     if (originalText.startsWith(" ") && !suggestedText.startsWith(" ")) {
       suggestedText = " " + suggestedText
     }
@@ -208,21 +255,17 @@ The WordWise AI Team`)
       suggestedText +
       contentRef.current.slice(highlight.end)
     
-    // Programmatically update the content and the ref
     contentRef.current = newContent
     setContent(newContent)
     setContentForWordCount(newContent)
-
     updateHistory(newContent)
 
-    // Remove this highlight and adjust others
     const adjustment =
       suggestedText.length -
       (highlight.end - highlight.start)
     setHighlights((prev) =>
       prev
         .filter((h) => {
-          // Remove the applied highlight and any highlights that were contained within its original span.
           const isContained = h.start >= highlight.start && h.end <= highlight.end
           return !isContained
         })
@@ -259,7 +302,7 @@ The WordWise AI Team`)
 
   const setCursorPosition = (element: Node | null, position: number) => {
     if (!element) return
-    const range = document.createRange()
+    const range = window.document.createRange()
     const selection = window.getSelection()
     let charIndex = 0
     const nodeStack: Node[] = [element]
@@ -296,9 +339,8 @@ The WordWise AI Team`)
       
       const newContent = history[newIndex]
       contentRef.current = newContent
-      setContent(newContent) // This triggers the rendering useEffect
+      setContent(newContent)
       setContentForWordCount(newContent)
-
       setHighlights([])
     }
   }
@@ -313,9 +355,8 @@ The WordWise AI Team`)
 
       const newContent = history[newIndex]
       contentRef.current = newContent
-      setContent(newContent) // This triggers the rendering useEffect
+      setContent(newContent)
       setContentForWordCount(newContent)
-
       setHighlights([])
     }
   }
@@ -353,8 +394,6 @@ The WordWise AI Team`)
   }
 
   const renderHighlightedHTML = () => {
-    // This escape function is basic but should prevent XSS from content.
-    // It preserves newline characters, which is important for us.
     const escape = (text: string) =>
       text
         .replace(/&/g, "&amp;")
@@ -365,7 +404,6 @@ The WordWise AI Team`)
       return escape(contentRef.current)
     }
 
-    // 1. Get all unique boundary points
     const points = new Set([0, contentRef.current.length])
     highlights.forEach((h) => {
       points.add(h.start)
@@ -375,30 +413,26 @@ The WordWise AI Team`)
 
     let html = ""
 
-    // 2. Iterate through segments defined by points
     for (let i = 0; i < sortedPoints.length - 1; i++) {
       const start = sortedPoints[i]
       const end = sortedPoints[i + 1]
 
-      if (start >= end) continue // Skip zero-length or invalid segments
+      if (start >= end) continue
 
       const segmentText = contentRef.current.slice(start, end)
       const escapedSegmentText = escape(segmentText)
 
-      // 3. Find all highlights covering this segment
       const coveringHighlights = highlights.filter(
         (h) => h.start <= start && h.end >= end
       )
 
       if (coveringHighlights.length > 0) {
-        // 4. Determine the highest-priority suggestion for styling
         const topHighlight = coveringHighlights.reduce((prev, curr) =>
           SUGGESTION_PRIORITY[prev.type] < SUGGESTION_PRIORITY[curr.type]
             ? prev
             : curr
         )
 
-        // 5. Create a title that lists all suggestions for the segment
         const allTitles = coveringHighlights
           .map(
             (h) =>
@@ -406,7 +440,6 @@ The WordWise AI Team`)
           )
           .join("\n")
 
-        // 6. Build the span with the top highlight's style and all titles
         html += `<span 
           class="cursor-pointer ${getHighlightStyle(
             topHighlight.type
@@ -416,14 +449,12 @@ The WordWise AI Team`)
           title="${escape(allTitles)}"
         >${escapedSegmentText}</span>`
       } else {
-        // No highlights for this segment
         html += escapedSegmentText
       }
     }
     return html
   }
 
-  // This effect synchronizes the DOM -> state and updates highlights
   useEffect(() => {
     if (isUpdatingFromEffect.current || isUndoRedoing.current) {
       isUndoRedoing.current = false
@@ -431,7 +462,6 @@ The WordWise AI Team`)
     }
 
     if (textareaRef.current) {
-      // Use the content from the ref, not state, to build the HTML
       const newHTML = renderHighlightedHTML()
       if (textareaRef.current.innerHTML !== newHTML) {
         const cursorPosition = getCursorPosition(textareaRef.current)
@@ -446,9 +476,6 @@ The WordWise AI Team`)
         })
       }
     }
-    // The dependency array is key. This effect now only runs when
-    // highlights change, or when content is changed programmatically
-    // by undo/redo or applying a suggestion.
   }, [highlights, content])
 
   useEffect(() => {
@@ -459,14 +486,22 @@ The WordWise AI Team`)
         isUpdatingFromEffect.current = false
       })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
-      {/* Document Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
         <div className="flex items-center gap-3 flex-1">
+          {document && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => router.push("/")}
+              className="text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           <Input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -485,10 +520,27 @@ The WordWise AI Team`)
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? "Saving..." : "Save"}
           </Button>
+          {document && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => setShowDeleteAlert(true)}
+                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
-      {/* Toolbar */}
       <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
         <Button
           variant="ghost"
@@ -526,7 +578,6 @@ The WordWise AI Team`)
         )}
       </div>
 
-      {/* Color Legend */}
       {highlights.length > 0 && (
         <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center gap-4 text-xs">
@@ -551,9 +602,7 @@ The WordWise AI Team`)
         </div>
       )}
 
-      {/* Editor Area */}
       <div className="flex-1 p-6 bg-white relative">
-        {/* ContentEditable div with highlighting */}
         <div
           ref={textareaRef}
           contentEditable
@@ -569,11 +618,7 @@ The WordWise AI Team`)
             setContent(newContent)
             setContentForWordCount(newContent)
 
-            // If the user starts typing, we assume they want to clear the
-            // highlights and we let the browser control the DOM.
             if(highlights.length > 0) {
-              // This will trigger a one-time re-render to remove the highlight spans.
-              // Future typing will not trigger this.
               setHighlights([])
             }
 
@@ -582,7 +627,6 @@ The WordWise AI Team`)
             debouncedAnalyzeText()
           }}
           onClick={(e) => {
-            // Handle clicks on highlighted spans
             const target = e.target as HTMLElement
             if (target.dataset.suggestionId) {
               e.preventDefault()
@@ -594,7 +638,6 @@ The WordWise AI Team`)
             }
           }}
           onBlur={() => {
-            // Ensure content is synchronized
             if (textareaRef.current) {
               const newContent = textareaRef.current.innerText || ""
               if (newContent !== contentRef.current) {
@@ -619,7 +662,6 @@ The WordWise AI Team`)
         />
       </div>
 
-      {/* Word Count */}
       <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600 flex justify-between items-center">
         <span>
           {contentForWordCount.split(" ").filter((word) => word.length > 0).length} words • {contentForWordCount.length} characters
@@ -632,7 +674,6 @@ The WordWise AI Team`)
         )}
       </div>
 
-      {/* Suggestion Popover */}
       {selectedSuggestion && (
         <div className="fixed inset-0 bg-black bg-opacity-20 z-50 flex items-center justify-center p-4">
           <Card className="max-w-md w-full">
@@ -702,6 +743,30 @@ The WordWise AI Team`)
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {showDeleteAlert && (
+        <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the
+                document and remove all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
     </div>
   )
