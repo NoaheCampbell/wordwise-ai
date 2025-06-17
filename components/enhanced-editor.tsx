@@ -18,7 +18,8 @@ import {
   X,
   Trash2,
   Settings,
-  ArrowLeft
+  ArrowLeft,
+  ChevronDown
 } from "lucide-react"
 import {
   useState,
@@ -112,6 +113,46 @@ function deduplicateHighlights(
 
   return result
 }
+
+// Tone categories for targeted rewrites
+const HOOK_TONES = [
+  "Bold",
+  "Intriguing",
+  "Urgent",
+  "Playful",
+  "Surprising",
+  "Thought-provoking"
+] as const
+
+const PERSONALIZATION_TONES = [
+  "Friendly",
+  "Witty",
+  "Professional",
+  "Confident",
+  "Warm",
+  "Conversational",
+  "Quirky",
+  "Empowering",
+  "Straightforward"
+] as const
+
+const CTA_TONES = [
+  "Motivational",
+  "Encouraging",
+  "Direct",
+  "Persuasive",
+  "Assertive",
+  "Energetic"
+] as const
+
+const CLARITY_TONES = [
+  "Clear",
+  "Simple",
+  "Direct",
+  "Objective",
+  "Accessible",
+  "Plainspoken"
+] as const
 
 export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const router = useRouter()
@@ -492,27 +533,75 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
+  // Helper to get the character indices of the current selection inside the editor
+  const getSelectionRange = (): {
+    start: number
+    end: number
+    text: string
+  } | null => {
+    if (!textareaRef.current) return null
+
+    const selection = window.getSelection()
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+      return null
+    }
+
+    // Ensure the selection is within the editor
+    if (!textareaRef.current.contains(selection.anchorNode)) return null
+
+    const range = selection.getRangeAt(0)
+
+    const preRange = range.cloneRange()
+    preRange.selectNodeContents(textareaRef.current)
+    preRange.setEnd(range.startContainer, range.startOffset)
+
+    const start = preRange.toString().length
+    const selectedText = range.toString()
+    const end = start + selectedText.length
+
+    return { start, end, text: selectedText }
+  }
+
   const handleRewrite = async (tone: string) => {
     if (!contentRef.current.trim()) {
       toast.info("There is no text to rewrite.")
       return
     }
 
+    const selectionInfo = getSelectionRange()
+    if (!selectionInfo) {
+      toast.info("Please select the text segment you want to rewrite.")
+      return
+    }
+
+    const { start, end, text: selectedText } = selectionInfo
+
     setIsRewriting(true)
-    const result = await rewriteWithToneAction(contentRef.current, tone)
+    const result = await rewriteWithToneAction(selectedText, tone)
     setIsRewriting(false)
 
     if (result.isSuccess) {
-      const newContent = result.data
+      const rewrittenSegment = result.data
+
+      const newContent =
+        contentRef.current.slice(0, start) +
+        rewrittenSegment +
+        contentRef.current.slice(end)
+
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
-      setHistory([newContent])
-      setCurrentHistoryIndex(0)
+
+      // Update history
+      setHistory(prevHistory => [...prevHistory, newContent])
+      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+      // Clear any existing highlights and suggestions (they may be stale)
       setDeepHighlights([])
       setRealTimeHighlights([])
       setSuggestions([])
-      toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
+
+      toast.success(`Selected text rewritten in a ${tone.toLowerCase()} tone.`)
     } else {
       toast.error(result.message)
     }
@@ -1024,22 +1113,119 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
         <Separator orientation="vertical" className="h-6" />
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-600">
-            Rewrite Tone:
-          </span>
-          {["Casual", "Formal", "Confident", "Witty"].map(tone => (
-            <Button
-              key={tone}
-              variant="outline"
-              size="sm"
-              onClick={() => handleRewrite(tone)}
-              disabled={isRewriting}
-              className="text-sm"
-            >
-              {isRewriting ? "Rewriting..." : tone}
-            </Button>
-          ))}
+        {/* Tone rewrite dropdowns */}
+        <div className="flex flex-nowrap items-center gap-1">
+          {/* Hook Optimization */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRewriting}
+                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+              >
+                Hook Optimization
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {HOOK_TONES.map(t => (
+                <DropdownMenuItem
+                  key={t}
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleRewrite(t)
+                  }}
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Tone Personalization */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRewriting}
+                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+              >
+                Tone Personalization
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {PERSONALIZATION_TONES.map(t => (
+                <DropdownMenuItem
+                  key={t}
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleRewrite(t)
+                  }}
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Call-to-Action Enhancements */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRewriting}
+                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+              >
+                CTA Enhancements
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {CTA_TONES.map(t => (
+                <DropdownMenuItem
+                  key={t}
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleRewrite(t)
+                  }}
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Clarity & Conciseness */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRewriting}
+                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+              >
+                Clarity & Conciseness
+                <ChevronDown className="size-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {CLARITY_TONES.map(t => (
+                <DropdownMenuItem
+                  key={t}
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleRewrite(t)
+                  }}
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {highlights.length > 0 && (
