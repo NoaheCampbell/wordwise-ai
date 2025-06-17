@@ -12,6 +12,7 @@ import { Inter } from "next/font/google"
 import { Toaster } from "sonner"
 import "./globals.css"
 import { DocumentProvider } from "@/components/utilities/document-provider"
+import "@/lib/force-pluralize"
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
