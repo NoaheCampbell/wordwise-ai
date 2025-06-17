@@ -31,8 +31,7 @@ import {
 import {
   analyzeTextAction,
   analyzeTextInParallelAction,
-  rewriteWithToneAction,
-  checkGrammarAndSpellingAction
+  rewriteWithToneAction
 } from "@/actions/ai-analysis-actions"
 import {
   AISuggestion,
@@ -218,7 +217,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const throttledRealTimeCheck = useCallback(
     throttle((text: string) => {
       handleRealTimeCheck(text)
-    }, 1500),
+    }, 500),
     []
   )
 
@@ -315,19 +314,64 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setRealTimeHighlights([])
       return
     }
-    setIsCheckingRealTime(true)
-    const result = await checkGrammarAndSpellingAction(textToCheck)
-    setIsCheckingRealTime(false)
 
-    if (result.isSuccess && result.data) {
-      const newHighlights: HighlightedText[] = result.data.map(suggestion => ({
-        id: suggestion.id,
-        start: suggestion.span?.start || 0,
-        end: suggestion.span?.end || 0,
-        type: suggestion.type,
-        suggestion
-      }))
+    setIsCheckingRealTime(true)
+
+    try {
+      const response = await fetch("/api/grammar/check", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ text: textToCheck })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`)
+      }
+
+      if (!response.body) {
+        return
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      const newHighlights: HighlightedText[] = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.trim() === "") continue
+          try {
+            const suggestion: AISuggestion = JSON.parse(line)
+            if (suggestion.span) {
+              const highlight: HighlightedText = {
+                id: suggestion.id,
+                start: suggestion.span.start,
+                end: suggestion.span.end,
+                type: suggestion.type,
+                suggestion: suggestion
+              }
+              newHighlights.push(highlight)
+            }
+          } catch (e) {
+            console.error("Error parsing suggestion from stream:", line, e)
+          }
+        }
+      }
       setRealTimeHighlights(newHighlights)
+    } catch (error) {
+      console.error("Streaming check failed:", error)
+      toast.error("Real-time check failed.")
+    } finally {
+      setIsCheckingRealTime(false)
     }
   }
 
