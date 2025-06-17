@@ -7,11 +7,40 @@ import { documentsTable } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 import readability from "text-readability-ts"
-import { findTextSpan } from "@/lib/ai-utils"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
+
+function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>): { start: number; end: number } | null {
+  let start = -1
+  let searchFrom = 0
+
+  while (true) {
+    const foundPos = fullText.indexOf(searchText, searchFrom)
+    if (foundPos === -1) break
+
+    if (!usedPositions.has(foundPos)) {
+      start = foundPos
+      usedPositions.add(foundPos)
+      break
+    }
+
+    searchFrom = foundPos + 1
+  }
+
+  if (start === -1) {
+    // Fallback for when the exact text isn't found (e.g., AI trims whitespace)
+    const trimmedSearchText = searchText.trim()
+    if (trimmedSearchText !== searchText) {
+        return findTextSpan(fullText, trimmedSearchText, usedPositions)
+    }
+    console.warn(`Could not find unused position for "${searchText}" in original text`)
+    return null
+  }
+
+  return { start, end: start + searchText.length }
+}
 
 function generateCombinedPrompt(text: string, analysisTypes: SuggestionType[]): string {
   const typeDescriptions = {
@@ -306,5 +335,103 @@ Rewritten Text:`
   } catch (error) {
     console.error("Error rewriting text with tone:", error)
     return { isSuccess: false, message: "An error occurred while rewriting the text." }
+  }
+}
+
+function generateRealTimeGrammarPrompt(text: string): string {
+  return `
+You are a fast and efficient writing assistant. Your ONLY task is to identify grammar and spelling errors in the text below.
+
+Return your response as a single JSON object with a key "suggestions" containing an array of suggestion objects. Each object in the array must have this exact structure:
+{
+  "suggestions": [
+    {
+      "type": "spelling" | "grammar",
+      "originalText": "the exact text with the error",
+      "suggestedText": "the corrected version",
+      "explanation": "a brief explanation of the error"
+    }
+  ]
+}
+
+Text to analyze:
+"${text}"
+
+IMPORTANT:
+- Respond EXTREMELY quickly.
+- Only identify definite errors. Do not suggest stylistic changes.
+- Return ONLY a valid JSON object. No markdown, no explanations, no code blocks.
+- If no errors are found, return { "suggestions": [] }.
+`
+}
+
+export async function checkGrammarAndSpellingAction(
+  text: string
+): Promise<ActionState<AISuggestion[]>> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { isSuccess: false, message: "OpenAI API key not configured" }
+  }
+  if (!text.trim()) {
+    return { isSuccess: true, message: "No text to check", data: [] }
+  }
+
+  try {
+    const prompt = generateRealTimeGrammarPrompt(text)
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+      response_format: { type: "json_object" },
+    })
+
+    const responseContent = response.choices[0]?.message?.content || '{ "suggestions": [] }'
+    
+    const parsedJson = JSON.parse(responseContent)
+    const rawSuggestions = parsedJson.suggestions || []
+
+    if (!Array.isArray(rawSuggestions)) {
+      return { isSuccess: true, message: "No suggestions found", data: [] }
+    }
+    
+    const usedPositions = new Set<number>()
+    const suggestions: AISuggestion[] = rawSuggestions
+      .map((rawSugg: any) => {
+        if (!rawSugg.type || !rawSugg.originalText || !rawSugg.suggestedText) {
+          return null
+        }
+
+        const span = findTextSpan(text, rawSugg.originalText, usedPositions)
+        if (!span) {
+          return null
+        }
+        
+        const { type, originalText, suggestedText, explanation } = rawSugg
+
+        let icon = type === 'spelling' ? "✍️" : "🧐"
+        let title = type === 'spelling' ? "Spelling Correction" : "Grammar Correction"
+        
+        return {
+          id: `${type}-${crypto.randomUUID()}`,
+          type,
+          span: { ...span, text: originalText },
+          originalText,
+          suggestedText,
+          description: explanation || "A suggestion for improvement.",
+          confidence: 95,
+          icon,
+          title,
+        }
+      })
+      .filter(Boolean) as AISuggestion[]
+
+    return {
+      isSuccess: true,
+      message: "Real-time check complete",
+      data: suggestions,
+    }
+  } catch (error) {
+    console.error("Error in real-time grammar check:", error)
+    return { isSuccess: false, message: "An error occurred during real-time check." }
   }
 } 
