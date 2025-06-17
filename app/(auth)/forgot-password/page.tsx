@@ -66,28 +66,30 @@ export default function ForgotPasswordPage() {
     e.preventDefault()
     if (!signIn) return
 
-    await signIn
-      .attemptFirstFactor({
+    try {
+      const result = await signIn.attemptFirstFactor({
         strategy: "reset_password_email_code",
         code,
         password
       })
-      .then(result => {
-        if (result.status === "needs_second_factor") {
-          setSecondFactor(true)
-          setError("")
-        } else if (result.status === "complete") {
-          setActive({ session: result.createdSessionId })
-          setError("")
-          router.push("/dashboard")
-        } else {
-          console.log(result)
-        }
-      })
-      .catch(err => {
-        console.error("error", err.errors[0].longMessage)
-        setError(err.errors[0].longMessage)
-      })
+
+      if (result.status === "needs_second_factor") {
+        setSecondFactor(true)
+        setError("")
+      } else if (result.status === "complete") {
+        // Ensure the new session is fully set before navigating away.
+        await setActive({ session: result.createdSessionId })
+
+        setError("")
+        // Redirect straight to the main app instead of the dashboard proxy page
+        router.push("/")
+      } else {
+        console.log(result)
+      }
+    } catch (err: any) {
+      console.error("error", err.errors?.[0]?.longMessage ?? err)
+      setError(err.errors?.[0]?.longMessage ?? "Something went wrong")
+    }
   }
 
   return (
