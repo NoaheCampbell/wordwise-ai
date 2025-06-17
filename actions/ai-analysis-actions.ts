@@ -86,6 +86,59 @@ export async function analyzeTextAction(
   }
 }
 
+export async function analyzeTextInParallelAction(
+  request: AnalyzeTextRequest
+): Promise<ActionState<AnalysisResult>> {
+  try {
+    const { text, analysisTypes } = request
+
+    if (!text || text.trim().length === 0) {
+      return { isSuccess: false, message: "No text provided" }
+    }
+
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
+    let offset = 0
+    
+    const analysisPromises = sentences.map(sentence => {
+      const sentenceOffset = offset
+      const trimmedSentence = sentence.trim()
+      const trimOffset = sentence.indexOf(trimmedSentence)
+      offset += sentence.length
+
+      return analyzeTextAction({ text: trimmedSentence, analysisTypes }).then(result => {
+        if (result.isSuccess && result.data) {
+          result.data.overallSuggestions.forEach(suggestion => {
+            if (suggestion.span) {
+              suggestion.span.start += sentenceOffset + trimOffset
+              suggestion.span.end += sentenceOffset + trimOffset
+            }
+          })
+          return result.data.overallSuggestions
+        }
+        return []
+      })
+    })
+
+    const suggestionsArrays = await Promise.all(analysisPromises)
+    const allSuggestions = suggestionsArrays.flat().sort((a, b) => (a.span?.start ?? 0) - (b.span?.start ?? 0))
+
+    const result: AnalysisResult = {
+      grammarErrors: [], // These are now part of overallSuggestions
+      styleSuggestions: [], // These are now part of overallSuggestions
+      overallSuggestions: allSuggestions,
+    }
+
+    return {
+      isSuccess: true,
+      message: "Parallel analysis complete",
+      data: result,
+    }
+  } catch (error) {
+    console.error("Error in parallel text analysis:", error)
+    return { isSuccess: false, message: "Failed to analyze text in parallel" }
+  }
+}
+
 function generateGrammarPrompt(text: string): string {
   return `
 You are a professional writing assistant. Analyze the following text for grammar and spelling errors.
@@ -281,51 +334,31 @@ function generateOverallSuggestions(
   grammarErrors: GrammarError[], 
   styleSuggestions: StyleSuggestion[]
 ): AISuggestion[] {
-  const suggestions: AISuggestion[] = []
+  const grammarSuggestions: AISuggestion[] = grammarErrors.map((error) => ({
+    id: `gram-${crypto.randomUUID()}`,
+    type: error.type,
+    span: error.span,
+    originalText: error.span.text,
+    suggestedText: error.suggestion,
+    description: error.message,
+    confidence: error.confidence,
+    icon: error.type === "spelling" ? "✍️" : "🧐",
+    title: error.type === "spelling" ? "Spelling Correction" : "Grammar Correction",
+  }))
 
-  // Convert grammar errors to suggestions
-  grammarErrors.forEach((error, index) => {
-    suggestions.push({
-      id: `overall-grammar-${index}`,
-      type: error.type,
-      title: error.type === "grammar" ? "Grammar Error" : "Spelling Error",
-      description: error.message,
-      originalText: error.span.text,
-      suggestedText: error.suggestion,
-      span: error.span,
-      confidence: error.confidence,
-      icon: error.type === "grammar" ? "📝" : "🔤"
-    })
-  })
+  const styleSuggestionsConverted: AISuggestion[] = styleSuggestions.map((suggestion) => ({
+    id: `style-${crypto.randomUUID()}`,
+    type: suggestion.type,
+    span: suggestion.span,
+    originalText: suggestion.span.text,
+    suggestedText: suggestion.suggestedText,
+    description: suggestion.explanation,
+    confidence: suggestion.confidence,
+    icon: "✨",
+    title: suggestion.type.split("-").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" "),
+  }))
 
-  // Convert style suggestions to suggestions
-  styleSuggestions.forEach((style, index) => {
-    const typeIcons = {
-      clarity: "💡",
-      conciseness: "✂️",
-      "passive-voice": "⚡"
-    }
-
-    const typeTitles = {
-      clarity: "Clarity Improvement",
-      conciseness: "Conciseness Suggestion",
-      "passive-voice": "Active Voice Suggestion"
-    }
-
-    suggestions.push({
-      id: `overall-style-${index}`,
-      type: style.type,
-      title: typeTitles[style.type],
-      description: style.explanation,
-      originalText: style.originalText,
-      suggestedText: style.suggestedText,
-      span: style.span,
-      confidence: style.confidence,
-      icon: typeIcons[style.type]
-    })
-  })
-
-  return suggestions
+  return [...grammarSuggestions, ...styleSuggestionsConverted]
 }
 
 export async function calculateClarityScoreForTextAction(

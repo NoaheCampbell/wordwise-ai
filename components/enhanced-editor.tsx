@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Undo, Redo, Save, Sparkles, Check, X, Trash2, Settings, ArrowLeft } from "lucide-react"
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
-import { analyzeTextAction } from "@/actions/ai-analysis-actions"
+import { analyzeTextAction, analyzeTextInParallelAction } from "@/actions/ai-analysis-actions"
 import { AISuggestion, AnalysisResult, SuggestionType, SelectDocument } from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
@@ -31,6 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 
 interface EnhancedEditorProps {
   initialDocument?: SelectDocument
@@ -85,6 +87,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
   const isUndoRedoing = useRef(false)
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
+  const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
 
   const applySuggestionById = (id: string) => {
     const highlight = highlights.find(h => h.id === id)
@@ -231,7 +234,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setIsAnalyzing(true)
     setProviderIsAnalyzing(true)
     try {
-      const result = await analyzeTextAction({
+      const action = useParallelAnalysis 
+        ? analyzeTextInParallelAction 
+        : analyzeTextAction
+
+      const result = await action({
         text: contentRef.current,
         analysisTypes: [
           "grammar",
@@ -565,6 +572,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   <Trash2 className="h-4 w-4 mr-2" />
                   Delete
                 </DropdownMenuItem>
+                <div className="p-2">
+                  <div className="flex items-center space-x-2">
+                    <Switch 
+                      id="parallel-analysis" 
+                      checked={useParallelAnalysis}
+                      onCheckedChange={setUseParallelAnalysis}
+                    />
+                    <Label htmlFor="parallel-analysis" className="text-sm">Parallel Analysis</Label>
+                  </div>
+                </div>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
