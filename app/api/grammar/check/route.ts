@@ -14,11 +14,20 @@ function findTextSpan(
   let start = -1
   let searchFrom = 0
 
+  const isBoundary = (char: string | undefined) =>
+    !char || /[^A-Za-z0-9]/.test(char)
+
   while (true) {
     const foundPos = fullText.indexOf(searchText, searchFrom)
     if (foundPos === -1) break
 
-    if (!usedPositions.has(foundPos)) {
+    const beforeChar = foundPos > 0 ? fullText[foundPos - 1] : undefined
+    const afterChar = fullText[foundPos + searchText.length]
+
+    // ensure we match whole word (boundaries) for spelling corrections to avoid substrings like "stuf" inside "stuff"
+    const hasValidBoundary = isBoundary(beforeChar) && isBoundary(afterChar)
+
+    if (hasValidBoundary && !usedPositions.has(foundPos)) {
       start = foundPos
       usedPositions.add(foundPos)
       break

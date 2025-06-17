@@ -425,14 +425,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return throttledFunc
   }
 
+  // Run only a quick spelling check after a word is completed
   const triggerRealTimeCheck = useCallback((text: string) => {
-    // Trigger spelling check immediately when space is pressed
     handleRealTimeCheck(text, "spelling")
-
-    // Also trigger a full check with a short delay to catch any other issues
-    setTimeout(() => {
-      handleRealTimeCheck(text, "full")
-    }, 300)
   }, [])
 
   const handleSave = async () => {
@@ -811,8 +806,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     } else if (e.key === "Enter") {
       e.preventDefault()
       window.document.execCommand("insertLineBreak")
-    } else if (e.key === " " || /[.,!?;:]/.test(e.key)) {
-      // Trigger real-time check when user presses space or punctuation (word completion)
+    } else if (e.key === " ") {
+      // Trigger real-time check only when user presses space (word completion)
       setTimeout(() => {
         triggerRealTimeCheck(contentRef.current)
       }, 10) // Small delay to ensure the character is included in the content
