@@ -66,6 +66,7 @@ Text to analyze:
 
 IMPORTANT:
 - Prioritize ACCURACY. Only identify definite errors.
+- Be extremely confident before reporting an error. If a phrase could be interpreted as correct in any context, do not flag it.
 - Do not suggest stylistic changes.
 - Do not flag errors in what might be incomplete sentences. Wait for a natural pause.
 - Each JSON object MUST be on its own line.

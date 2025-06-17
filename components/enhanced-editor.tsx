@@ -131,6 +131,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
   const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
   const [isRewriting, setIsRewriting] = useState(false)
+  const lastAnalyzedText = useRef({ spelling: "", full: "" })
+  const lastCursorPosition = useRef(0)
+  const lastContentLength = useRef(0)
 
   const highlights = useMemo(
     () => [...deepHighlights, ...realTimeHighlights],
@@ -184,9 +187,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const applySuggestion = (highlight: HighlightedText) => {
-    throttledRealTimeCheck.cancel()
-    debouncedRealTimeCheck.cancel()
-
     let { suggestedText } = highlight.suggestion
     const { originalText } = highlight.suggestion
 
@@ -295,6 +295,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setContentForWordCount(initialDocument.content || "")
       setHistory([initialDocument.content || ""])
       setCurrentHistoryIndex(0)
+      lastContentLength.current = (initialDocument.content || "").length
+      lastCursorPosition.current = 0
     }
     return () => {
       setSuggestions([])
@@ -337,44 +339,15 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return throttledFunc
   }
 
-  const throttledRealTimeCheck = useCallback(
-    throttle((text: string) => {
-      handleRealTimeCheck(text, "spelling")
-    }, 500),
-    []
-  )
+  const triggerRealTimeCheck = useCallback((text: string) => {
+    // Trigger spelling check immediately when space is pressed
+    handleRealTimeCheck(text, "spelling")
 
-  const debounce = <T extends (...args: any[]) => void>(
-    func: T,
-    delay: number
-  ) => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-    const debouncedFunc = (...args: Parameters<T>) => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-      }
-      timeoutId = setTimeout(() => {
-        func(...args)
-      }, delay)
-    }
-
-    debouncedFunc.cancel = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-    }
-
-    return debouncedFunc
-  }
-
-  const debouncedRealTimeCheck = useCallback(
-    debounce((text: string) => {
+    // Also trigger a full check with a short delay to catch any other issues
+    setTimeout(() => {
       handleRealTimeCheck(text, "full")
-    }, 1000),
-    []
-  )
+    }, 300)
+  }, [])
 
   const handleSave = async () => {
     if (!user) {
@@ -468,8 +441,29 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     textToCheck: string,
     level: "spelling" | "full"
   ) => {
+    const currentContent = contentRef.current
+
+    // Only check if the text has actually changed for this level
+    if (lastAnalyzedText.current[level] === textToCheck) {
+      return
+    }
+
+    // Only filter out highlights that are no longer valid (text doesn't match)
+    // but keep the ones that are still valid in their positions
+    const validHighlights = realTimeHighlights.filter(
+      h =>
+        h.start < currentContent.length &&
+        h.end <= currentContent.length &&
+        h.start < h.end &&
+        currentContent.substring(h.start, h.end) === h.suggestion.originalText
+    )
+
+    // Only update if we actually need to remove invalid highlights
+    if (validHighlights.length !== realTimeHighlights.length) {
+      setRealTimeHighlights(validHighlights)
+    }
+
     if (!textToCheck.trim()) {
-      setRealTimeHighlights([])
       return
     }
 
@@ -510,12 +504,18 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           try {
             const suggestion: AISuggestion = JSON.parse(line)
             if (suggestion.span) {
+              const existingHighlight = validHighlights.find(
+                h => h.id === suggestion.id
+              )
+
               const highlight: HighlightedText = {
                 id: suggestion.id,
                 start: suggestion.span.start,
                 end: suggestion.span.end,
                 type: suggestion.type,
-                suggestion: suggestion
+                suggestion: existingHighlight
+                  ? existingHighlight.suggestion
+                  : suggestion
               }
               newHighlights.push(highlight)
             }
@@ -524,7 +524,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           }
         }
       }
-      setRealTimeHighlights(newHighlights)
+      setRealTimeHighlights(currentValidHighlights => {
+        const currentIds = new Set(currentValidHighlights.map(h => h.id))
+        const highlightsToAdd = newHighlights.filter(h => !currentIds.has(h.id))
+        return [...currentValidHighlights, ...highlightsToAdd]
+      })
+
+      lastAnalyzedText.current[level] = textToCheck
     } catch (error) {
       console.error("Streaming check failed:", error)
       toast.error("Real-time check failed.")
@@ -582,18 +588,52 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       return
     }
 
+    const oldContent = contentRef.current
+    const oldLength = lastContentLength.current
+    const newLength = newContent.length
+    const lengthDiff = newLength - oldLength
+
+    // Calculate rough edit position based on cursor and content length change
+    const cursorPos = lastCursorPosition.current
+    let editStart = cursorPos
+    let editEnd = cursorPos
+
+    if (lengthDiff > 0) {
+      // Text was inserted
+      editEnd = editStart + lengthDiff
+    } else if (lengthDiff < 0) {
+      // Text was deleted
+      editEnd = editStart - lengthDiff
+    }
+
+    // Only remove highlights that are directly affected by the edit
+    setRealTimeHighlights(prevHighlights =>
+      prevHighlights.filter(h => {
+        // Keep highlights that don't overlap with the edited region
+        const highlightBeforeEdit = h.end <= editStart
+        const highlightAfterEdit = h.start >= editEnd
+        const highlightStillValid =
+          h.start < newContent.length &&
+          h.end <= newContent.length &&
+          h.start < h.end &&
+          newContent.substring(h.start, h.end) === h.suggestion.originalText
+
+        return (
+          (highlightBeforeEdit || highlightAfterEdit) && highlightStillValid
+        )
+      })
+    )
+
     contentRef.current = newContent
     setContentForWordCount(newContent)
     setHasManuallyEdited(true)
+    lastContentLength.current = newLength
 
     if (newContent !== (history[currentHistoryIndex] || "")) {
       const newHistory = history.slice(0, currentHistoryIndex + 1)
       setHistory([...newHistory, newContent])
       setCurrentHistoryIndex(newHistory.length)
     }
-
-    throttledRealTimeCheck(newContent)
-    debouncedRealTimeCheck(newContent)
   }
 
   const handleSelectionChange = () => {
@@ -611,13 +651,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     const newContent = e.currentTarget.innerText
     const cursorPosition = getCursorPosition(e.currentTarget)
+    lastCursorPosition.current = cursorPosition
     handleContentChange(newContent)
     setCursorPosition(e.currentTarget, cursorPosition)
   }
 
   const handleUndo = () => {
-    throttledRealTimeCheck.cancel()
-    debouncedRealTimeCheck.cancel()
     if (currentHistoryIndex > 0) {
       const newIndex = currentHistoryIndex - 1
       setCurrentHistoryIndex(newIndex)
@@ -627,6 +666,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setContentForWordCount(newContent)
       setDeepHighlights([])
       setRealTimeHighlights([])
+      lastContentLength.current = newContent.length
+      lastCursorPosition.current = newContent.length
 
       if (textareaRef.current) {
         isUpdatingFromEffect.current = true
@@ -640,8 +681,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const handleRedo = () => {
-    throttledRealTimeCheck.cancel()
-    debouncedRealTimeCheck.cancel()
     if (currentHistoryIndex < history.length - 1) {
       const newIndex = currentHistoryIndex + 1
       setCurrentHistoryIndex(newIndex)
@@ -651,6 +690,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setContentForWordCount(newContent)
       setDeepHighlights([])
       setRealTimeHighlights([])
+      lastContentLength.current = newContent.length
+      lastCursorPosition.current = newContent.length
       if (textareaRef.current) {
         isUpdatingFromEffect.current = true
         textareaRef.current.innerHTML = newContent
@@ -679,6 +720,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     } else if (e.key === "Enter") {
       e.preventDefault()
       window.document.execCommand("insertLineBreak")
+    } else if (e.key === " " || /[.,!?;:]/.test(e.key)) {
+      // Trigger real-time check when user presses space or punctuation (word completion)
+      setTimeout(() => {
+        triggerRealTimeCheck(contentRef.current)
+      }, 10) // Small delay to ensure the character is included in the content
     }
   }
 
