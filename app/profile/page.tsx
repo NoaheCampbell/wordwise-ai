@@ -1,6 +1,7 @@
-"use client"
+"use server"
 
-import { useUser } from "@clerk/nextjs"
+import { currentUser } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
 import {
   Card,
   CardContent,
@@ -15,38 +16,35 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Mail, User, Calendar, Settings, ArrowLeft } from "lucide-react"
-import { useAuth } from "@/lib/hooks/use-auth"
-import { useRouter } from "next/navigation"
+import { getWritingStatisticsAction } from "@/actions/db/profiles-actions"
+import ProfileBackButton from "./_components/profile-back-button"
 
-export default function ProfilePage() {
-  const { user } = useUser()
-  const { isEmailVerified } = useAuth()
-  const router = useRouter()
+export default async function ProfilePage() {
+  const user = await currentUser()
 
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mx-auto mb-4 size-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Loading profile...</p>
-        </div>
-      </div>
-    )
+    redirect("/login")
   }
+
+  const statisticsResult = await getWritingStatisticsAction()
+  const statistics = statisticsResult.isSuccess
+    ? statisticsResult.data
+    : {
+        documentsCount: 0,
+        wordsWritten: 0,
+        suggestionsUsed: 0,
+        averageClarityScore: null
+      }
+
+  const isEmailVerified = user.emailAddresses.some(
+    email => email.verification?.status === "verified"
+  )
 
   return (
     <div className="container mx-auto max-w-4xl py-10">
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="size-4" />
-            Back to App
-          </Button>
+          <ProfileBackButton />
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
             <p className="text-muted-foreground">
@@ -168,23 +166,33 @@ export default function ProfilePage() {
           <CardContent>
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <div className="rounded-lg border p-4 text-center">
-                <div className="text-2xl font-bold text-blue-600">0</div>
+                <div className="text-2xl font-bold text-blue-600">
+                  {statistics.documentsCount}
+                </div>
                 <div className="text-muted-foreground text-sm">Documents</div>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <div className="text-2xl font-bold text-green-600">0</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {statistics.wordsWritten.toLocaleString()}
+                </div>
                 <div className="text-muted-foreground text-sm">
                   Words Written
                 </div>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <div className="text-2xl font-bold text-purple-600">0</div>
+                <div className="text-2xl font-bold text-purple-600">
+                  {statistics.suggestionsUsed}
+                </div>
                 <div className="text-muted-foreground text-sm">
                   Suggestions Used
                 </div>
               </div>
               <div className="rounded-lg border p-4 text-center">
-                <div className="text-2xl font-bold text-orange-600">--</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {statistics.averageClarityScore !== null
+                    ? statistics.averageClarityScore
+                    : "--"}
+                </div>
                 <div className="text-muted-foreground text-sm">
                   Avg. Clarity Score
                 </div>

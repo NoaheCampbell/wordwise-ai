@@ -48,6 +48,10 @@ import {
   updateDocumentAction,
   deleteDocumentAction
 } from "@/actions/db/documents-actions"
+import {
+  applySuggestionByContentAction,
+  dismissSuggestionByContentAction
+} from "@/actions/db/suggestions-actions"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import {
@@ -379,6 +383,18 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     queueMicrotask(() => {
       isUpdatingFromEffect.current = false
     })
+
+    // Track the suggestion as applied in the database
+    if (document?.id) {
+      applySuggestionByContentAction(
+        document.id,
+        highlight.suggestion.originalText,
+        highlight.suggestion.suggestedText
+      ).catch((error: any) => {
+        console.error("Error tracking suggestion application:", error)
+        // Don't show error to user as this is background tracking
+      })
+    }
   }
 
   const applySuggestionById = (id: string) => {
@@ -389,9 +405,25 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const dismissSuggestion = (highlightId: string) => {
+    // Find the suggestion being dismissed
+    const highlight = highlights.find(h => h.id === highlightId)
+
+    // Remove from UI
     setDeepHighlights(prev => prev.filter(h => h.id !== highlightId))
     setRealTimeHighlights(prev => prev.filter(h => h.id !== highlightId))
     setSelectedSuggestion(null)
+
+    // Remove from database if it exists
+    if (document?.id && highlight) {
+      dismissSuggestionByContentAction(
+        document.id,
+        highlight.suggestion.originalText,
+        highlight.suggestion.suggestedText
+      ).catch((error: any) => {
+        console.error("Error removing dismissed suggestion:", error)
+        // Don't show error to user as this is background cleanup
+      })
+    }
   }
 
   const dismissSuggestionById = (id: string) => {
@@ -767,16 +799,36 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         ? analyzeTextInParallelAction
         : analyzeTextAction
 
-      const result = await action({
-        text: contentRef.current,
-        analysisTypes: [
-          "grammar",
-          "spelling",
-          "clarity",
-          "conciseness",
-          "passive-voice"
-        ]
-      })
+      let result
+      if (action === analyzeTextAction) {
+        // For single analysis, pass documentId and saveSuggestions
+        result = await analyzeTextAction(
+          {
+            text: contentRef.current,
+            analysisTypes: [
+              "grammar",
+              "spelling",
+              "clarity",
+              "conciseness",
+              "passive-voice"
+            ]
+          },
+          document?.id, // documentId
+          true // saveSuggestions
+        )
+      } else {
+        // For parallel analysis, use existing call
+        result = await action({
+          text: contentRef.current,
+          analysisTypes: [
+            "grammar",
+            "spelling",
+            "clarity",
+            "conciseness",
+            "passive-voice"
+          ]
+        })
+      }
 
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)

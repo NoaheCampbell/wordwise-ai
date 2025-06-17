@@ -12,8 +12,13 @@ import {
   profilesTable,
   SelectProfile
 } from "@/db/schema/profiles-schema"
+import { documentsTable } from "@/db/schema/documents-schema"
+import { suggestionsTable } from "@/db/schema/suggestions-schema"
 import { ActionState } from "@/types"
-import { eq } from "drizzle-orm"
+import { WritingStatistics } from "@/types/writing-statistics-types"
+import { eq, and, count, sql } from "drizzle-orm"
+import { auth } from "@clerk/nextjs/server"
+import { getAverageClarityScoreAction } from "@/actions/ai-analysis-actions"
 
 export async function createProfileAction(
   profile: InsertProfile
@@ -90,5 +95,68 @@ export async function deleteProfileAction(id: string): Promise<ActionState<void>
   } catch (error) {
     console.error("Error deleting profile:", error)
     return { isSuccess: false, message: "Failed to delete profile" }
+  }
+}
+
+export async function getWritingStatisticsAction(): Promise<ActionState<WritingStatistics>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Get document count
+    const documentsCountResult = await db
+      .select({ count: count() })
+      .from(documentsTable)
+      .where(eq(documentsTable.userId, userId))
+
+    const documentsCount = documentsCountResult[0]?.count || 0
+
+    // Get words written (sum of all document content word counts)
+    const documentsWithContent = await db
+      .select({ content: documentsTable.content })
+      .from(documentsTable)
+      .where(eq(documentsTable.userId, userId))
+
+    const wordsWritten = documentsWithContent.reduce((total, doc) => {
+      if (!doc.content) return total
+      // Simple word count: split by whitespace and filter out empty strings
+      const wordCount = doc.content.trim().split(/\s+/).filter(word => word.length > 0).length
+      return total + wordCount
+    }, 0)
+
+    // Get suggestions used count (accepted suggestions)
+    const suggestionsUsedResult = await db
+      .select({ count: count() })
+      .from(suggestionsTable)
+      .where(
+        and(
+          eq(suggestionsTable.userId, userId),
+          eq(suggestionsTable.isAccepted, true)
+        )
+      )
+
+    const suggestionsUsed = suggestionsUsedResult[0]?.count || 0
+
+    // Get average clarity score
+    const clarityScoreResult = await getAverageClarityScoreAction()
+    const averageClarityScore = clarityScoreResult.isSuccess ? clarityScoreResult.data : null
+
+    const statistics: WritingStatistics = {
+      documentsCount,
+      wordsWritten,
+      suggestionsUsed,
+      averageClarityScore
+    }
+
+    return {
+      isSuccess: true,
+      message: "Writing statistics retrieved successfully",
+      data: statistics
+    }
+  } catch (error) {
+    console.error("Error getting writing statistics:", error)
+    return { isSuccess: false, message: "Failed to get writing statistics" }
   }
 }

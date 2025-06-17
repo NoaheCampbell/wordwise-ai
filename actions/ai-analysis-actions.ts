@@ -7,6 +7,7 @@ import { documentsTable } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 import readability from "text-readability-ts"
+import { createSuggestionAction } from "@/actions/db/suggestions-actions"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -139,7 +140,9 @@ Important requirements:
 }
 
 export async function analyzeTextAction(
-  request: AnalyzeTextRequest
+  request: AnalyzeTextRequest,
+  documentId?: string,
+  saveSuggestions: boolean = false
 ): Promise<ActionState<AnalysisResult>> {
   try {
     if (!process.env.OPENAI_API_KEY) {
@@ -201,8 +204,10 @@ export async function analyzeTextAction(
           title = "Grammar Correction"
         }
 
+        const suggestionId = crypto.randomUUID()
+
         return {
-          id: `${type}-${crypto.randomUUID()}`,
+          id: suggestionId,
           type,
           span: { ...span, text: originalText },
           originalText,
@@ -214,6 +219,32 @@ export async function analyzeTextAction(
         }
       })
       .filter(Boolean) as AISuggestion[]
+
+    // Save suggestions to database if requested and documentId is provided
+    if (saveSuggestions && documentId && overallSuggestions.length > 0) {
+      const { userId } = await auth()
+      if (userId) {
+        // Save each suggestion to the database
+        const savePromises = overallSuggestions.map(suggestion => 
+          createSuggestionAction({
+            documentId,
+            type: suggestion.type as any, // Type assertion for enum compatibility
+            originalText: suggestion.originalText,
+            suggestedText: suggestion.suggestedText,
+            explanation: suggestion.description,
+            startPosition: suggestion.span?.start || 0,
+            endPosition: suggestion.span?.end || 0,
+            isAccepted: false
+          })
+        )
+        
+        // Execute all saves in parallel but don't wait for them to complete
+        // This keeps the response fast while still saving the data
+        Promise.all(savePromises).catch(error => {
+          console.error("Error saving suggestions to database:", error)
+        })
+      }
+    }
 
     const result: AnalysisResult = {
       grammarErrors: [],
