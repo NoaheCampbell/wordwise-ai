@@ -57,7 +57,13 @@ const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
 export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const router = useRouter()
   const { user } = useUser()
-  const { reloadDocuments, reloadClarityScore } = useDocument()
+  const { 
+    reloadDocuments, 
+    reloadClarityScore, 
+    setSuggestions,
+    registerSuggestionCallbacks,
+    setIsAnalyzing: setProviderIsAnalyzing
+  } = useDocument()
   
   const [document, setDocument] = useState<SelectDocument | null>(initialDocument || null)
   const [title, setTitle] = useState(initialDocument?.title || "Untitled Document")
@@ -80,6 +86,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const isUndoRedoing = useRef(false)
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
 
+  const applySuggestionById = (id: string) => {
+    const highlight = highlights.find(h => h.id === id)
+    if (highlight) {
+      applySuggestion(highlight)
+    }
+  }
+
+  const dismissSuggestionById = (id: string) => {
+    dismissSuggestion(id)
+  }
+
+  useEffect(() => {
+    registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
+  }, [registerSuggestionCallbacks, highlights])
+
   useEffect(() => {
     if (initialDocument) {
       setDocument(initialDocument)
@@ -90,7 +111,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setHistory([initialDocument.content || ""])
       setCurrentHistoryIndex(0)
     }
-  }, [initialDocument])
+    return () => {
+      setSuggestions([])
+    }
+  }, [initialDocument, setSuggestions])
 
   const debounce = <T extends (...args: any[]) => any>(
     func: T,
@@ -205,6 +229,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     if (!contentRef.current.trim()) return
 
     setIsAnalyzing(true)
+    setProviderIsAnalyzing(true)
     try {
       const result = await analyzeTextAction({
         text: contentRef.current,
@@ -228,11 +253,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             suggestion
           }))
         setHighlights(newHighlights)
+        setSuggestions(result.data.overallSuggestions)
       }
     } catch (error) {
       console.error("Analysis error:", error)
     } finally {
       setIsAnalyzing(false)
+      setProviderIsAnalyzing(false)
     }
   }
 
@@ -263,27 +290,30 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     const adjustment =
       suggestedText.length -
       (highlight.end - highlight.start)
-    setHighlights((prev) =>
-      prev
-        .filter((h) => {
-          const isContained = h.start >= highlight.start && h.end <= highlight.end
-          return !isContained
-        })
-        .map((h) =>
-          h.start > highlight.end
-            ? {
-                ...h,
-                start: h.start + adjustment,
-                end: h.end + adjustment
-              }
-            : h
-        )
-    )
+    const newHighlights = highlights
+      .filter((h) => {
+        const isContained = h.start >= highlight.start && h.end <= highlight.end
+        return !isContained
+      })
+      .map((h) =>
+        h.start > highlight.end
+          ? {
+              ...h,
+              start: h.start + adjustment,
+              end: h.end + adjustment
+            }
+          : h
+      )
+    
+    setHighlights(newHighlights)
+    setSuggestions(newHighlights.map(h => h.suggestion))
     setSelectedSuggestion(null)
   }
 
   const dismissSuggestion = (highlightId: string) => {
-    setHighlights((prev) => prev.filter((h) => h.id !== highlightId))
+    const newHighlights = highlights.filter((h) => h.id !== highlightId)
+    setHighlights(newHighlights)
+    setSuggestions(newHighlights.map(h => h.suggestion))
     setSelectedSuggestion(null)
   }
 
@@ -620,6 +650,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
             if(highlights.length > 0) {
               setHighlights([])
+              setSuggestions([])
             }
 
             setHasManuallyEdited(true)

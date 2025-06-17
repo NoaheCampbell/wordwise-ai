@@ -4,19 +4,10 @@ import { SuggestionCard } from "@/components/suggestion-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Sparkles, RefreshCw } from "lucide-react"
-import { AISuggestion } from "@/types"
+import { useDocument } from "./utilities/document-provider"
 
-interface AISuggestionsPanelProps {
-  suggestions?: AISuggestion[]
-  onRefresh?: () => void
-  isAnalyzing?: boolean
-}
-
-export function AISuggestionsPanel({ 
-  suggestions = [], 
-  onRefresh,
-  isAnalyzing = false 
-}: AISuggestionsPanelProps) {
+export function AISuggestionsPanel() { 
+  const { suggestions, isAnalyzing } = useDocument()
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -30,7 +21,6 @@ export function AISuggestionsPanel({
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={onRefresh}
             disabled={isAnalyzing}
             className="text-gray-600 hover:text-gray-900 hover:bg-gray-100"
           >
@@ -49,14 +39,19 @@ export function AISuggestionsPanel({
 
       {/* Suggestions List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-        {suggestions.length > 0 ? (
+        {isAnalyzing ? (
+           <div className="text-center text-gray-500 mt-8">
+             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+             <p>Analyzing...</p>
+           </div>
+        ) : suggestions.length > 0 ? (
           suggestions.map((suggestion) => (
             <SuggestionCard key={suggestion.id} suggestion={suggestion} />
           ))
         ) : (
           <div className="text-center text-gray-500 mt-8">
             <p>No suggestions available.</p>
-            <p className="text-sm">Suggestions will appear here as you write.</p>
+            <p className="text-sm">Type or click Analyze to get suggestions.</p>
           </div>
         )}
       </div>

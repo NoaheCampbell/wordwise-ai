@@ -6,6 +6,7 @@ import {
 } from "@/actions/ai-analysis-actions"
 import { getDocumentsAction } from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema"
+import { AISuggestion } from "@/types"
 import { useUser } from "@clerk/nextjs"
 import { usePathname } from "next/navigation"
 import {
@@ -14,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState
 } from "react"
 
@@ -21,12 +23,22 @@ interface DocumentContextType {
   documents: SelectDocument[]
   clarityScore: number | null
   liveClarityScore: number | null
+  suggestions: AISuggestion[]
   isLoading: boolean
   isLoadingLiveScore: boolean
+  isAnalyzing: boolean
   reloadDocuments: () => void
   reloadClarityScore: () => void
   updateLiveClarityScore: (text: string) => Promise<void>
   clearLiveClarityScore: () => void
+  setSuggestions: (suggestions: AISuggestion[]) => void
+  setIsAnalyzing: (isAnalyzing: boolean) => void
+  registerSuggestionCallbacks: (
+    apply: (id: string) => void,
+    dismiss: (id: string) => void
+  ) => void
+  applySuggestion: (id: string) => void
+  dismissSuggestion: (id: string) => void
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined)
@@ -37,8 +49,30 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<SelectDocument[]>([])
   const [clarityScore, setClarityScore] = useState<number | null>(null)
   const [liveClarityScore, setLiveClarityScore] = useState<number | null>(null)
+  const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingLiveScore, setIsLoadingLiveScore] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  const suggestionCallbacks = useRef({
+    apply: (_id: string) => {},
+    dismiss: (_id: string) => {}
+  })
+
+  const registerSuggestionCallbacks = useCallback(
+    (apply: (id: string) => void, dismiss: (id: string) => void) => {
+      suggestionCallbacks.current = { apply, dismiss }
+    },
+    []
+  )
+
+  const applySuggestion = useCallback((id: string) => {
+    suggestionCallbacks.current.apply(id)
+  }, [])
+
+  const dismissSuggestion = useCallback((id: string) => {
+    suggestionCallbacks.current.dismiss(id)
+  }, [])
 
   const reloadDocuments = useCallback(async () => {
     if (!user) return
@@ -79,6 +113,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       setDocuments([])
       setClarityScore(null)
       setLiveClarityScore(null)
+      setSuggestions([])
     }
   }, [user, reloadDocuments, reloadClarityScore, pathname])
 
@@ -88,12 +123,19 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         documents,
         clarityScore,
         liveClarityScore,
+        suggestions,
         isLoading,
         isLoadingLiveScore,
+        isAnalyzing,
         reloadDocuments,
         reloadClarityScore,
         updateLiveClarityScore,
-        clearLiveClarityScore
+        clearLiveClarityScore,
+        setSuggestions,
+        setIsAnalyzing,
+        registerSuggestionCallbacks,
+        applySuggestion,
+        dismissSuggestion
       }}
     >
       {children}
@@ -107,4 +149,4 @@ export function useDocument() {
     throw new Error("useDocument must be used within a DocumentProvider")
   }
   return context
-} 
+}

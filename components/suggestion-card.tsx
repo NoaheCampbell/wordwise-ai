@@ -1,102 +1,69 @@
 "use client"
 
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ThumbsUp, ThumbsDown, Copy, Check } from "lucide-react"
-import { useState } from "react"
-
+import { useDocument } from "@/components/utilities/document-provider"
 import { AISuggestion } from "@/types"
+import { Badge } from "./ui/badge"
+import { Button } from "./ui/button"
+import { Check, X } from "lucide-react"
 
 interface SuggestionCardProps {
   suggestion: AISuggestion
 }
 
 export function SuggestionCard({ suggestion }: SuggestionCardProps) {
-  const [feedback, setFeedback] = useState<"up" | "down" | null>(null)
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(suggestion.suggestedText)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "tone":
-        return "bg-purple-100 text-purple-900 border-purple-300"
-      case "clarity":
-        return "bg-blue-100 text-blue-900 border-blue-300"
-      case "cta":
-        return "bg-green-100 text-green-900 border-green-300"
-      case "conciseness":
-        return "bg-orange-100 text-orange-900 border-orange-300"
-      default:
-        return "bg-gray-100 text-gray-900 border-gray-300"
-    }
-  }
+  const { applySuggestion, dismissSuggestion } = useDocument()
 
   return (
-    <Card className="transition-all duration-200 hover:shadow-md border-gray-300 bg-white">
-      <CardContent className="p-4">
-        <div className="space-y-3">
-          {/* Header */}
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{suggestion.icon}</span>
-              <div>
-                <h3 className="font-semibold text-gray-900 text-sm">{suggestion.title}</h3>
-                <Badge variant="outline" className={`text-xs mt-1 ${getTypeColor(suggestion.type)}`}>
-                  {suggestion.type}
-                </Badge>
-              </div>
-            </div>
-            <Badge variant="secondary" className="text-xs bg-gray-200 text-gray-800">
-              {suggestion.confidence}% confident
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="flex items-start justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{suggestion.icon}</span>
+          <div>
+            <h3 className="font-semibold text-gray-900">{suggestion.title}</h3>
+            <Badge variant="secondary" className="text-xs mt-1 capitalize bg-gray-100 text-gray-700">
+              {suggestion.type.replace("-", " ")}
             </Badge>
           </div>
+        </div>
+      </div>
 
-          {/* Description */}
-          <p className="text-sm text-gray-700 leading-relaxed">{suggestion.description}</p>
+      <p className="text-sm text-gray-700 mb-4">{suggestion.description}</p>
 
-          {/* Suggestion */}
-          <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
-            <p className="text-sm text-gray-900 italic font-medium">{suggestion.suggestedText}</p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`h-8 px-3 ${feedback === "up" ? "bg-green-100 text-green-700 hover:bg-green-200" : "text-gray-600 hover:text-green-600 hover:bg-green-50"}`}
-                onClick={() => setFeedback(feedback === "up" ? null : "up")}
-              >
-                <ThumbsUp className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={`h-8 px-3 ${feedback === "down" ? "bg-red-100 text-red-700 hover:bg-red-200" : "text-gray-600 hover:text-red-600 hover:bg-red-50"}`}
-                onClick={() => setFeedback(feedback === "down" ? null : "down")}
-              >
-                <ThumbsDown className="h-3 w-3" />
-              </Button>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-3 text-gray-600 hover:text-gray-800 hover:bg-gray-100"
-              onClick={handleCopy}
-            >
-              {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
-            </Button>
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs font-medium text-gray-500">Original:</label>
+          <div className="rounded-md border border-red-200 bg-red-50/50 p-2 text-sm text-red-900">
+            <del>{suggestion.originalText}</del>
           </div>
         </div>
-      </CardContent>
-    </Card>
+        
+        <div>
+          <label className="text-xs font-medium text-gray-500">Suggested:</label>
+          <div className="rounded-md border border-green-200 bg-green-50/50 p-2 text-sm text-green-900">
+            <strong>{suggestion.suggestedText}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mt-4">
+        <Button
+          onClick={() => applySuggestion(suggestion.id)}
+          size="sm"
+          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <Check className="h-4 w-4 mr-2" />
+          Apply
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => dismissSuggestion(suggestion.id)}
+          className="flex-1"
+        >
+          <X className="h-4 w-4 mr-2" />
+          Dismiss
+        </Button>
+      </div>
+    </div>
   )
 }
