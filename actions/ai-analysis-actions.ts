@@ -292,4 +292,48 @@ export async function getAverageClarityScoreAction(): Promise<
       message: "Failed to calculate average score",
     }
   }
+}
+
+export async function rewriteWithToneAction(
+  text: string,
+  tone: string
+): Promise<ActionState<string>> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { isSuccess: false, message: "OpenAI API key not configured" }
+  }
+  if (!text.trim()) {
+    return { isSuccess: false, message: "No text provided to rewrite" }
+  }
+
+  try {
+    const prompt = `
+You are a professional writing assistant. Rewrite the following text to have a ${tone} tone.
+Your response should be only the rewritten text, without any additional comments, explanations, or markdown formatting. Preserve the original meaning and structure as much as possible.
+
+Original Text:
+"${text}"
+
+Rewritten Text:`
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+    })
+
+    const rewrittenText = response.choices[0]?.message?.content?.trim()
+
+    if (!rewrittenText) {
+      return { isSuccess: false, message: "Failed to get a response from the AI." }
+    }
+
+    return {
+      isSuccess: true,
+      message: "Text rewritten successfully",
+      data: rewrittenText,
+    }
+  } catch (error) {
+    console.error("Error rewriting text with tone:", error)
+    return { isSuccess: false, message: "An error occurred while rewriting the text." }
+  }
 } 

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Undo, Redo, Save, Sparkles, Check, X, Trash2, Settings, ArrowLeft } from "lucide-react"
 import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
-import { analyzeTextAction, analyzeTextInParallelAction } from "@/actions/ai-analysis-actions"
+import { analyzeTextAction, analyzeTextInParallelAction, rewriteWithToneAction } from "@/actions/ai-analysis-actions"
 import { AISuggestion, AnalysisResult, SuggestionType, SelectDocument } from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
@@ -88,6 +88,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const isUndoRedoing = useRef(false)
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
   const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
+  const [isRewriting, setIsRewriting] = useState(false)
 
   const applySuggestionById = (id: string) => {
     const highlight = highlights.find(h => h.id === id)
@@ -223,6 +224,30 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       toast.success("Document deleted successfully")
       reloadDocuments()
       router.push("/")
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  const handleRewrite = async (tone: string) => {
+    if (!contentRef.current.trim()) {
+      toast.info("There is no text to rewrite.")
+      return
+    }
+
+    setIsRewriting(true)
+    const result = await rewriteWithToneAction(contentRef.current, tone)
+    setIsRewriting(false)
+
+    if (result.isSuccess) {
+      const newContent = result.data
+      contentRef.current = newContent
+      setContent(newContent)
+      setContentForWordCount(newContent)
+      updateHistory(newContent)
+      setHighlights([])
+      setSuggestions([])
+      toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
     } else {
       toast.error(result.message)
     }
@@ -591,40 +616,63 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleUndo}
-          disabled={currentHistoryIndex <= 0}
-          className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
-        >
-          <Undo className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleRedo}
-          disabled={currentHistoryIndex >= history.length - 1}
-          className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
-        >
-          <Redo className="h-4 w-4" />
-        </Button>
+      <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleUndo}
+            disabled={currentHistoryIndex <= 0 || isRewriting}
+            className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+          >
+            <Undo className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRedo}
+            disabled={currentHistoryIndex >= history.length - 1 || isRewriting}
+            className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+          >
+            <Redo className="h-4 w-4" />
+          </Button>
+          <Separator orientation="vertical" className="h-6" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={analyzeText}
+            disabled={isAnalyzing || !hasManuallyEdited || isRewriting}
+            className="text-blue-700 hover:text-blue-900 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles className={`h-4 w-4 mr-2 ${isAnalyzing ? 'animate-spin' : ''}`} />
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+        </div>
+        
         <Separator orientation="vertical" className="h-6" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={analyzeText}
-          disabled={isAnalyzing || !hasManuallyEdited}
-          className="text-blue-700 hover:text-blue-900 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Sparkles className={`h-4 w-4 mr-2 ${isAnalyzing ? 'animate-spin' : ''}`} />
-          {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-600">Rewrite Tone:</span>
+          {["Casual", "Formal", "Confident", "Witty"].map(tone => (
+            <Button
+              key={tone}
+              variant="outline"
+              size="sm"
+              onClick={() => handleRewrite(tone)}
+              disabled={isRewriting}
+              className="text-sm"
+            >
+              {isRewriting ? "Rewriting..." : tone}
+            </Button>
+          ))}
+        </div>
+        
         {highlights.length > 0 && (
-          <Badge variant="secondary" className="ml-2">
-            {highlights.length} suggestions
-          </Badge>
+          <div className="ml-auto flex items-center">
+            <Badge variant="secondary" className="ml-2">
+              {highlights.length} suggestions
+            </Badge>
+          </div>
         )}
       </div>
 
