@@ -904,16 +904,28 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       }
     }
 
-    // Default selection handling - restore the original cursor positioning logic
+    // Only update cursor position if there's no active selection
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0 && textareaRef.current) {
       const range = selection.getRangeAt(0)
-      const preCaretRange = range.cloneRange()
-      preCaretRange.selectNodeContents(textareaRef.current)
-      preCaretRange.setEnd(range.endContainer, range.endOffset)
-      const newCursorPos = preCaretRange.toString().length
-      lastCursorPosition.current = newCursorPos
-      setCursorPosition(textareaRef.current, newCursorPos)
+
+      // If the selection is collapsed (just a cursor), update the cursor position
+      if (range.collapsed) {
+        const preCaretRange = range.cloneRange()
+        preCaretRange.selectNodeContents(textareaRef.current)
+        preCaretRange.setEnd(range.endContainer, range.endOffset)
+        const newCursorPos = preCaretRange.toString().length
+        lastCursorPosition.current = newCursorPos
+      }
+      // If there's an actual selection (not collapsed), don't interfere with it
+      // Just update the cursor position for tracking purposes but don't call setCursorPosition
+      else {
+        const preCaretRange = range.cloneRange()
+        preCaretRange.selectNodeContents(textareaRef.current)
+        preCaretRange.setEnd(range.endContainer, range.endOffset)
+        const newCursorPos = preCaretRange.toString().length
+        lastCursorPosition.current = newCursorPos
+      }
     }
   }
 
