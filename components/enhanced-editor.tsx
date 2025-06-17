@@ -179,29 +179,46 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }, [initialDocument, setSuggestions])
 
-  const debounce = <T extends (...args: any[]) => any>(
+  const throttle = <T extends (...args: any[]) => void>(
     func: T,
     delay: number
   ) => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const debouncedFunc = function (...args: Parameters<T>) {
+    let lastCallTime = 0
+
+    const throttledFunc = (...args: Parameters<T>) => {
+      const now = Date.now()
+      const remainingTime = delay - (now - lastCallTime)
+
       if (timeoutId) {
         clearTimeout(timeoutId)
       }
-      timeoutId = setTimeout(() => {
+
+      if (remainingTime <= 0) {
+        lastCallTime = now
         func(...args)
-      }, delay)
+      } else {
+        timeoutId = setTimeout(() => {
+          lastCallTime = Date.now()
+          func(...args)
+        }, remainingTime)
+      }
     }
-    debouncedFunc.cancel = () => {
-      if (timeoutId) clearTimeout(timeoutId)
+
+    throttledFunc.cancel = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
     }
-    return debouncedFunc
+
+    return throttledFunc
   }
 
   const throttledRealTimeCheck = useCallback(
-    debounce((text: string) => {
+    throttle((text: string) => {
       handleRealTimeCheck(text)
-    }, 2000),
+    }, 1500),
     []
   )
 
@@ -378,6 +395,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     contentRef.current = newContent
     setContent(newContent)
     setContentForWordCount(newContent)
+
+    if (deepHighlights.length > 0) {
+      setDeepHighlights([])
+    }
+
+    setHasManuallyEdited(true)
+
     setHistory(prevHistory => [...prevHistory, newContent])
     setCurrentHistoryIndex(prevIndex => prevIndex + 1)
 
