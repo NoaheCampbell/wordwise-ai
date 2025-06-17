@@ -13,48 +13,84 @@ const openai = new OpenAI({
 })
 
 function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>, context?: string): { start: number; end: number } | null {
-  // If we have context, try to find the text within that context first
+  console.log('Finding text span for:', { searchText, context, fullText: fullText.substring(0, 100) + '...' })
+  
+  // Function to check if a position has valid word boundaries
+  const hasWordBoundary = (text: string, pos: number, searchLength: number) => {
+    const beforeChar = pos > 0 ? text[pos - 1] : undefined
+    const afterChar = text[pos + searchLength] || undefined
+    const isBoundary = (char: string | undefined) => !char || /[^A-Za-z0-9]/.test(char)
+    return isBoundary(beforeChar) && isBoundary(afterChar)
+  }
+
+  // First attempt: Use context for precise positioning
   if (context && context.length > searchText.length) {
-    const contextIndex = fullText.indexOf(context)
-    if (contextIndex !== -1) {
+    console.log('Using context-based search')
+    
+    // Find all possible context matches
+    let contextSearchFrom = 0
+    while (contextSearchFrom < fullText.length) {
+      const contextIndex = fullText.indexOf(context, contextSearchFrom)
+      if (contextIndex === -1) break
+      
       const relativeIndex = context.indexOf(searchText)
       if (relativeIndex !== -1) {
         const absoluteIndex = contextIndex + relativeIndex
-        if (!usedPositions.has(absoluteIndex)) {
+        
+        // Check if this position is available and has proper boundaries
+        if (!usedPositions.has(absoluteIndex) && 
+            hasWordBoundary(fullText, absoluteIndex, searchText.length)) {
+          console.log('Found via context at position:', absoluteIndex)
           usedPositions.add(absoluteIndex)
           return { start: absoluteIndex, end: absoluteIndex + searchText.length }
         }
       }
+      
+      contextSearchFrom = contextIndex + 1
     }
+    console.log('Context-based search failed, falling back to direct search')
   }
 
-  let start = -1
+  // Second attempt: Direct search with word boundaries
   let searchFrom = 0
-
-  while (true) {
+  while (searchFrom < fullText.length) {
     const foundPos = fullText.indexOf(searchText, searchFrom)
     if (foundPos === -1) break
 
-    if (!usedPositions.has(foundPos)) {
-      start = foundPos
+    // Check if this position is available and has proper word boundaries
+    if (!usedPositions.has(foundPos) && 
+        hasWordBoundary(fullText, foundPos, searchText.length)) {
+      console.log('Found via direct search at position:', foundPos)
       usedPositions.add(foundPos)
-      break
+      return { start: foundPos, end: foundPos + searchText.length }
     }
 
     searchFrom = foundPos + 1
   }
 
-  if (start === -1) {
-    // Fallback for when the exact text isn't found (e.g., AI trims whitespace)
-    const trimmedSearchText = searchText.trim()
-    if (trimmedSearchText !== searchText) {
-        return findTextSpan(fullText, trimmedSearchText, usedPositions, context)
+  // Third attempt: Search without word boundary constraints (for phrases with punctuation)
+  searchFrom = 0
+  while (searchFrom < fullText.length) {
+    const foundPos = fullText.indexOf(searchText, searchFrom)
+    if (foundPos === -1) break
+
+    if (!usedPositions.has(foundPos)) {
+      console.log('Found via relaxed search at position:', foundPos)
+      usedPositions.add(foundPos)
+      return { start: foundPos, end: foundPos + searchText.length }
     }
-    console.warn(`Could not find unused position for "${searchText}" in original text`)
-    return null
+
+    searchFrom = foundPos + 1
   }
 
-  return { start, end: start + searchText.length }
+  // Final fallback: Try with trimmed text
+  const trimmedSearchText = searchText.trim()
+  if (trimmedSearchText !== searchText && trimmedSearchText.length > 0) {
+    return findTextSpan(fullText, trimmedSearchText, usedPositions, context)
+  }
+
+  console.warn(`Could not find unused position for "${searchText}" in original text`)
+  return null
 }
 
 function generateCombinedPrompt(text: string, analysisTypes: SuggestionType[]): string {
@@ -96,7 +132,8 @@ Text to analyze:
 Important requirements:
 - Return ONLY a valid JSON object. Do not include any markdown formatting, explanations, or code blocks like \`\`\`json.
 - For "originalText", you MUST use the exact text from the source.
-- For "context", include 5-10 words before and after the originalText to provide positioning context.
+- For "context", include 8-15 words before and after the originalText to provide precise positioning context. This is crucial for words that appear multiple times.
+- Make the context as specific as possible to uniquely identify the location of the issue.
 - If no issues are found, return an object with an empty "suggestions" array: { "suggestions": [] }.
 `
 }

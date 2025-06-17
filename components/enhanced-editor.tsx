@@ -660,6 +660,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const decoder = new TextDecoder()
       let buffer = ""
       const newHighlightsRaw: HighlightedText[] = []
+      const usedPositions = new Set<number>()
 
       while (true) {
         const { done, value } = await reader.read()
@@ -687,7 +688,49 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   ? existingHighlight.suggestion
                   : suggestion
               }
-              newHighlightsRaw.push(highlight)
+
+              // Validate that the text at the calculated position matches the expected text
+              const actualText = currentContent.slice(
+                highlight.start,
+                highlight.end
+              )
+              if (actualText === suggestion.originalText) {
+                usedPositions.add(highlight.start)
+                newHighlightsRaw.push(highlight)
+              } else {
+                console.warn("Real-time highlight position mismatch:", {
+                  suggestionId: suggestion.id,
+                  expectedText: suggestion.originalText,
+                  actualText: actualText,
+                  position: { start: highlight.start, end: highlight.end }
+                })
+                // Try to find the correct position
+                let correctPos = -1
+                let searchFrom = 0
+                while (searchFrom < currentContent.length) {
+                  const foundPos = currentContent.indexOf(
+                    suggestion.originalText,
+                    searchFrom
+                  )
+                  if (foundPos === -1) break
+                  if (!usedPositions.has(foundPos)) {
+                    correctPos = foundPos
+                    break
+                  }
+                  searchFrom = foundPos + 1
+                }
+
+                if (correctPos !== -1) {
+                  console.log(
+                    "Found correct position for real-time highlight:",
+                    correctPos
+                  )
+                  highlight.start = correctPos
+                  highlight.end = correctPos + suggestion.originalText.length
+                  usedPositions.add(correctPos)
+                  newHighlightsRaw.push(highlight)
+                }
+              }
             }
           } catch (e) {
             console.error("Error parsing suggestion from stream:", line, e)
@@ -738,13 +781,47 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)
         const newHighlightsRaw: HighlightedText[] =
-          result.data.overallSuggestions.map(suggestion => ({
-            id: suggestion.id,
-            start: suggestion.span?.start || 0,
-            end: suggestion.span?.end || 0,
-            type: suggestion.type,
-            suggestion
-          }))
+          result.data.overallSuggestions
+            .map(suggestion => {
+              const highlight = {
+                id: suggestion.id,
+                start: suggestion.span?.start || 0,
+                end: suggestion.span?.end || 0,
+                type: suggestion.type,
+                suggestion
+              }
+
+              // Validate that the text at the calculated position matches the expected text
+              const actualText = contentRef.current.slice(
+                highlight.start,
+                highlight.end
+              )
+              if (actualText !== suggestion.originalText) {
+                console.warn("Position mismatch detected:", {
+                  suggestionId: suggestion.id,
+                  expectedText: suggestion.originalText,
+                  actualText: actualText,
+                  position: { start: highlight.start, end: highlight.end },
+                  context: suggestion.span?.text
+                })
+                // Try to find the correct position
+                const correctPos = contentRef.current.indexOf(
+                  suggestion.originalText
+                )
+                if (correctPos !== -1) {
+                  console.log("Found correct position:", correctPos)
+                  highlight.start = correctPos
+                  highlight.end = correctPos + suggestion.originalText.length
+                }
+              }
+
+              return highlight
+            })
+            .filter(h => {
+              // Only keep highlights where we found valid positions
+              const actualText = contentRef.current.slice(h.start, h.end)
+              return actualText === h.suggestion.originalText
+            })
         setDeepHighlights(deduplicateHighlights(newHighlightsRaw))
         // We keep real-time highlights, but the deep analysis ones take precedence
         // The rendering logic will handle overlaps based on priority
@@ -827,7 +904,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       }
     }
 
-    // Default selection handling
+    // Default selection handling - restore the original cursor positioning logic
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0 && textareaRef.current) {
       const range = selection.getRangeAt(0)
@@ -836,6 +913,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       preCaretRange.setEnd(range.endContainer, range.endOffset)
       const newCursorPos = preCaretRange.toString().length
       lastCursorPosition.current = newCursorPos
+      setCursorPosition(textareaRef.current, newCursorPos)
     }
   }
 

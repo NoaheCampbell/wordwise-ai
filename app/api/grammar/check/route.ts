@@ -11,43 +11,57 @@ function findTextSpan(
   searchText: string,
   usedPositions: Set<number>
 ): { start: number; end: number } | null {
-  let start = -1
+  // Function to check if a position has valid word boundaries
+  const hasWordBoundary = (text: string, pos: number, searchLength: number) => {
+    const beforeChar = pos > 0 ? text[pos - 1] : undefined
+    const afterChar = text[pos + searchLength] || undefined
+    const isBoundary = (char: string | undefined) =>
+      !char || /[^A-Za-z0-9]/.test(char)
+    return isBoundary(beforeChar) && isBoundary(afterChar)
+  }
+
+  // First attempt: Direct search with word boundaries (for most spelling/grammar errors)
   let searchFrom = 0
-
-  const isBoundary = (char: string | undefined) =>
-    !char || /[^A-Za-z0-9]/.test(char)
-
-  while (true) {
+  while (searchFrom < fullText.length) {
     const foundPos = fullText.indexOf(searchText, searchFrom)
     if (foundPos === -1) break
 
-    const beforeChar = foundPos > 0 ? fullText[foundPos - 1] : undefined
-    const afterChar = fullText[foundPos + searchText.length]
-
-    // ensure we match whole word (boundaries) for spelling corrections to avoid substrings like "stuf" inside "stuff"
-    const hasValidBoundary = isBoundary(beforeChar) && isBoundary(afterChar)
-
-    if (hasValidBoundary && !usedPositions.has(foundPos)) {
-      start = foundPos
+    // Check if this position is available and has proper word boundaries
+    if (
+      !usedPositions.has(foundPos) &&
+      hasWordBoundary(fullText, foundPos, searchText.length)
+    ) {
       usedPositions.add(foundPos)
-      break
+      return { start: foundPos, end: foundPos + searchText.length }
     }
 
     searchFrom = foundPos + 1
   }
 
-  if (start === -1) {
-    const trimmedSearchText = searchText.trim()
-    if (trimmedSearchText !== searchText) {
-      return findTextSpan(fullText, trimmedSearchText, usedPositions)
+  // Second attempt: Search without word boundary constraints (for phrases with punctuation)
+  searchFrom = 0
+  while (searchFrom < fullText.length) {
+    const foundPos = fullText.indexOf(searchText, searchFrom)
+    if (foundPos === -1) break
+
+    if (!usedPositions.has(foundPos)) {
+      usedPositions.add(foundPos)
+      return { start: foundPos, end: foundPos + searchText.length }
     }
-    console.warn(
-      `Could not find unused position for "${searchText}" in original text`
-    )
-    return null
+
+    searchFrom = foundPos + 1
   }
 
-  return { start, end: start + searchText.length }
+  // Final fallback: Try with trimmed text
+  const trimmedSearchText = searchText.trim()
+  if (trimmedSearchText !== searchText && trimmedSearchText.length > 0) {
+    return findTextSpan(fullText, trimmedSearchText, usedPositions)
+  }
+
+  console.warn(
+    `Could not find unused position for "${searchText}" in original text`
+  )
+  return null
 }
 
 function generateStreamingGrammarPrompt(
