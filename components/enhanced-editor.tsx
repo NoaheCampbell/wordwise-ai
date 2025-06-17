@@ -228,8 +228,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             }
           : h
       )
-    setDeepHighlights(newDeepHighlights)
-
     const newRealTimeHighlights = realTimeHighlights
       .filter(h => h.id !== highlight.id)
       .map(h =>
@@ -241,17 +239,86 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             }
           : h
       )
+
+    // Update state AFTER we compute the immediate HTML to ensure highlights update visually right away
+    setDeepHighlights(newDeepHighlights)
     setRealTimeHighlights(newRealTimeHighlights)
 
     setSelectedSuggestion(null)
 
+    // Render using the updated highlight arrays so the removed highlight disappears immediately
+    const updatedHighlights = [...newDeepHighlights, ...newRealTimeHighlights]
+
+    const renderWithHighlights = () => {
+      const escape = (text: string) =>
+        text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+
+      if (updatedHighlights.length === 0) {
+        return escape(contentRef.current)
+      }
+
+      const points = new Set([0, contentRef.current.length])
+      updatedHighlights.forEach(h => {
+        points.add(h.start)
+        points.add(h.end)
+      })
+      const sortedPoints = Array.from(points).sort((a, b) => a - b)
+
+      let html = ""
+
+      for (let i = 0; i < sortedPoints.length - 1; i++) {
+        const start = sortedPoints[i]
+        const end = sortedPoints[i + 1]
+
+        if (start >= end) continue
+
+        const segmentText = contentRef.current.slice(start, end)
+        const escapedSegmentText = escape(segmentText)
+
+        const coveringHighlights = updatedHighlights.filter(
+          h => h.start <= start && h.end >= end
+        )
+
+        if (coveringHighlights.length > 0) {
+          const topHighlight = coveringHighlights.reduce((prev, curr) =>
+            SUGGESTION_PRIORITY[prev.type] < SUGGESTION_PRIORITY[curr.type]
+              ? prev
+              : curr
+          )
+
+          const allTitles = coveringHighlights
+            .map(
+              h =>
+                `${h.suggestion.title} (${h.type}): "${h.suggestion.originalText}" → "${h.suggestion.suggestedText}"`
+            )
+            .join("\n")
+
+          html += `<span 
+            class="cursor-pointer ${getHighlightStyle(
+              topHighlight.type
+            )} hover:opacity-80 transition-opacity" 
+            style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
+            data-suggestion-id="${topHighlight.suggestion.id}"
+            title="${escape(allTitles)}"
+          >${escapedSegmentText}</span>`
+        } else {
+          html += escapedSegmentText
+        }
+      }
+      return html
+    }
+
     if (textareaRef.current) {
       isUpdatingFromEffect.current = true
-      textareaRef.current.innerHTML = renderHighlightedHTML()
+      textareaRef.current.innerHTML = renderWithHighlights()
 
       const newCursorPos = highlight.start + suggestedText.length
       setCursorPosition(textareaRef.current, newCursorPos)
     }
+
+    queueMicrotask(() => {
+      isUpdatingFromEffect.current = false
+    })
   }
 
   const applySuggestionById = (id: string) => {
