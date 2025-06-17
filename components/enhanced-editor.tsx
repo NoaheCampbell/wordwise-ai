@@ -129,7 +129,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const [history, setHistory] = useState<string[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
-  const isUndoRedoing = useRef(false)
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
   const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
   const [isRewriting, setIsRewriting] = useState(false)
@@ -199,47 +198,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return debouncedFunc
   }
 
-  const throttle = <T extends (...args: any[]) => any>(
-    func: T,
-    limit: number
-  ) => {
-    let inThrottle: boolean
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-    const throttledFunc = function (this: any, ...args: Parameters<T>) {
-      const context = this
-      if (!inThrottle) {
-        func.apply(context, args)
-        inThrottle = true
-        timeoutId = setTimeout(() => (inThrottle = false), limit)
-      }
-    }
-    throttledFunc.cancel = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
-      inThrottle = false
-    }
-    return throttledFunc
-  }
-
-  const updateHistory = (newContent: string) => {
-    if (newContent === history[currentHistoryIndex]) return
-    const newHistory = history.slice(0, currentHistoryIndex + 1)
-    newHistory.push(newContent)
-    setHistory(newHistory)
-    setCurrentHistoryIndex(newHistory.length - 1)
-  }
-
-  const debouncedUpdateHistory = useCallback(
-    debounce((newContent: string) => {
-      updateHistory(newContent)
-    }, 1000),
-    [history, currentHistoryIndex]
-  )
-
   const throttledRealTimeCheck = useCallback(
-    throttle((text: string) => {
+    debounce((text: string) => {
       handleRealTimeCheck(text)
     }, 2000),
     []
@@ -288,6 +248,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
 
     setIsSaving(false)
+    setSelectedSuggestion(null)
   }
 
   const handleDelete = async () => {
@@ -321,7 +282,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
-      updateHistory(newContent)
+      setHistory([newContent])
+      setCurrentHistoryIndex(0)
       setDeepHighlights([])
       setRealTimeHighlights([])
       setSuggestions([])
@@ -396,7 +358,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const applySuggestion = (highlight: HighlightedText) => {
-    debouncedUpdateHistory.cancel()
     throttledRealTimeCheck.cancel()
 
     let { suggestedText } = highlight.suggestion
@@ -417,7 +378,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     contentRef.current = newContent
     setContent(newContent)
     setContentForWordCount(newContent)
-    updateHistory(newContent)
+    setHistory(prevHistory => [...prevHistory, newContent])
+    setCurrentHistoryIndex(prevIndex => prevIndex + 1)
 
     const adjustment = suggestedText.length - (highlight.end - highlight.start)
 
@@ -499,36 +461,47 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const handleUndo = () => {
-    debouncedUpdateHistory.cancel()
     throttledRealTimeCheck.cancel()
     if (currentHistoryIndex > 0) {
-      isUndoRedoing.current = true
       const newIndex = currentHistoryIndex - 1
       setCurrentHistoryIndex(newIndex)
-
       const newContent = history[newIndex]
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
       setDeepHighlights([])
       setRealTimeHighlights([])
+
+      if (textareaRef.current) {
+        isUpdatingFromEffect.current = true
+        textareaRef.current.innerHTML = newContent
+        setCursorPosition(textareaRef.current, newContent.length)
+        queueMicrotask(() => {
+          isUpdatingFromEffect.current = false
+        })
+      }
     }
   }
 
   const handleRedo = () => {
-    debouncedUpdateHistory.cancel()
     throttledRealTimeCheck.cancel()
     if (currentHistoryIndex < history.length - 1) {
-      isUndoRedoing.current = true
       const newIndex = currentHistoryIndex + 1
       setCurrentHistoryIndex(newIndex)
-
       const newContent = history[newIndex]
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
       setDeepHighlights([])
       setRealTimeHighlights([])
+      if (textareaRef.current) {
+        isUpdatingFromEffect.current = true
+        textareaRef.current.innerHTML = newContent
+        setCursorPosition(textareaRef.current, newContent.length)
+        queueMicrotask(() => {
+          isUpdatingFromEffect.current = false
+        })
+      }
     }
   }
 
@@ -628,8 +601,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   useEffect(() => {
-    if (isUpdatingFromEffect.current || isUndoRedoing.current) {
-      isUndoRedoing.current = false
+    if (isUpdatingFromEffect.current) {
       return
     }
 
@@ -838,7 +810,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             }
 
             setHasManuallyEdited(true)
-            debouncedUpdateHistory(newContent)
+
+            setHistory(prevHistory => [...prevHistory, newContent])
+            setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
             throttledRealTimeCheck(newContent)
           }}
           onClick={e => {
