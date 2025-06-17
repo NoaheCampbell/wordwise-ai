@@ -18,7 +18,7 @@ export default function SignUpPage() {
       forceRedirectUrl="/"
       fallbackRedirectUrl="/"
       signInUrl="/login"
-      appearance={{ 
+      appearance={{
         baseTheme: theme === "dark" ? dark : undefined,
         elements: {
           formButtonPrimary: "bg-blue-600 hover:bg-blue-700 text-white",

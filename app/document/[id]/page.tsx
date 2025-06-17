@@ -12,7 +12,11 @@ import { TopNav } from "@/components/top-nav"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
 import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
 import { ArrowLeft, Save, Settings, Undo, Redo, Trash2 } from "lucide-react"
-import { getDocumentAction, updateDocumentAction, deleteDocumentAction } from "@/actions/db/documents-actions"
+import {
+  getDocumentAction,
+  updateDocumentAction,
+  deleteDocumentAction
+} from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema/documents-schema"
 import { toast } from "sonner"
 import { useDocument } from "@/components/utilities/document-provider"
@@ -21,7 +25,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
@@ -31,7 +35,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { EnhancedEditor } from "@/components/enhanced-editor"
 
@@ -71,7 +75,7 @@ export default function DocumentPage() {
     if (!user || !params.id) return
     setIsLoading(true)
     const result = await getDocumentAction(params.id as string, user.id)
-    
+
     if (result.isSuccess) {
       setDocument(result.data)
       setTitle(result.data.title)
@@ -80,7 +84,7 @@ export default function DocumentPage() {
       toast.error("Failed to load document")
       setDocument(null)
     }
-    
+
     setIsLoading(false)
   }
 
@@ -88,7 +92,7 @@ export default function DocumentPage() {
     if (!user || !document) return
 
     setIsSaving(true)
-    
+
     const result = await updateDocumentAction(
       document.id,
       { title, content },
@@ -127,7 +131,7 @@ export default function DocumentPage() {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="mx-auto size-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
           <p className="mt-4 text-gray-600">Loading document...</p>
         </div>
       </div>
@@ -138,12 +142,11 @@ export default function DocumentPage() {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
         <div className="text-center">
-          <p className="text-gray-600 mb-4">Document not found or you do not have permission to view it.</p>
-          <Button 
-            variant="outline" 
-            onClick={() => router.push("/")}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
+          <p className="mb-4 text-gray-600">
+            Document not found or you do not have permission to view it.
+          </p>
+          <Button variant="outline" onClick={() => router.push("/")}>
+            <ArrowLeft className="mr-2 size-4" />
             Back to Dashboard
           </Button>
         </div>
@@ -155,22 +158,22 @@ export default function DocumentPage() {
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full bg-gray-50">
         <DocumentSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col">
           <TopNav />
-          
+
           {/* Email verification banner */}
           <div className="px-6 pt-4">
             <EmailVerificationBanner />
           </div>
 
-          <main className="flex-1 flex min-h-0">
+          <main className="flex min-h-0 flex-1">
             {/* Main Editor Column */}
-            <div className="flex-[2] p-6 min-w-0">
+            <div className="min-w-0 flex-[2] p-6">
               <EnhancedEditor initialDocument={document} />
             </div>
 
             {/* AI Suggestions Panel */}
-            <div className="flex-1 border-l border-gray-200 bg-white min-w-0">
+            <div className="min-w-0 flex-1 border-l border-gray-200 bg-white">
               <AISuggestionsPanel />
             </div>
           </main>
@@ -179,7 +182,9 @@ export default function DocumentPage() {
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Are you sure you want to delete this document?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the
               document and remove all associated data.
@@ -199,4 +204,4 @@ export default function DocumentPage() {
       </AlertDialog>
     </SidebarProvider>
   )
-} 
+}

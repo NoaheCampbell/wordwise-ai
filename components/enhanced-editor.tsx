@@ -2,24 +2,59 @@
 
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger
+} from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { Undo, Redo, Save, Sparkles, Check, X, Trash2, Settings, ArrowLeft } from "lucide-react"
-import { useState, useEffect, useRef, useCallback, KeyboardEvent, useMemo } from "react"
-import { analyzeTextAction, analyzeTextInParallelAction, rewriteWithToneAction, checkGrammarAndSpellingAction } from "@/actions/ai-analysis-actions"
-import { AISuggestion, AnalysisResult, SuggestionType, SelectDocument } from "@/types"
+import {
+  Undo,
+  Redo,
+  Save,
+  Sparkles,
+  Check,
+  X,
+  Trash2,
+  Settings,
+  ArrowLeft
+} from "lucide-react"
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  KeyboardEvent,
+  useMemo
+} from "react"
+import {
+  analyzeTextAction,
+  analyzeTextInParallelAction,
+  rewriteWithToneAction,
+  checkGrammarAndSpellingAction
+} from "@/actions/ai-analysis-actions"
+import {
+  AISuggestion,
+  AnalysisResult,
+  SuggestionType,
+  SelectDocument
+} from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { useDocument } from "@/components/utilities/document-provider"
-import { createDocumentAction, updateDocumentAction, deleteDocumentAction } from "@/actions/db/documents-actions"
+import {
+  createDocumentAction,
+  updateDocumentAction,
+  deleteDocumentAction
+} from "@/actions/db/documents-actions"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
@@ -29,7 +64,7 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialogTitle
 } from "@/components/ui/alert-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -59,29 +94,36 @@ const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
 export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const router = useRouter()
   const { user } = useUser()
-  const { 
-    reloadDocuments, 
-    reloadClarityScore, 
+  const {
+    reloadDocuments,
+    reloadClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
     setIsAnalyzing: setProviderIsAnalyzing
   } = useDocument()
-  
-  const [document, setDocument] = useState<SelectDocument | null>(initialDocument || null)
-  const [title, setTitle] = useState(initialDocument?.title || "Untitled Document")
+
+  const [document, setDocument] = useState<SelectDocument | null>(
+    initialDocument || null
+  )
+  const [title, setTitle] = useState(
+    initialDocument?.title || "Untitled Document"
+  )
   const [content, setContent] = useState(initialDocument?.content || "")
 
   const [deepHighlights, setDeepHighlights] = useState<HighlightedText[]>([])
-  const [realTimeHighlights, setRealTimeHighlights] = useState<HighlightedText[]>([])
+  const [realTimeHighlights, setRealTimeHighlights] = useState<
+    HighlightedText[]
+  >([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isCheckingRealTime, setIsCheckingRealTime] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
-  const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null)
+  const [selectedSuggestion, setSelectedSuggestion] =
+    useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
-  
+
   const contentRef = useRef(content)
   const [contentForWordCount, setContentForWordCount] = useState(content)
 
@@ -92,7 +134,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
   const [isRewriting, setIsRewriting] = useState(false)
 
-  const highlights = useMemo(() => [...deepHighlights, ...realTimeHighlights], [deepHighlights, realTimeHighlights])
+  const highlights = useMemo(
+    () => [...deepHighlights, ...realTimeHighlights],
+    [deepHighlights, realTimeHighlights]
+  )
 
   const applySuggestionById = (id: string) => {
     const highlight = highlights.find(h => h.id === id)
@@ -108,6 +153,17 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   useEffect(() => {
     registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
   }, [registerSuggestionCallbacks, highlights])
+
+  useEffect(() => {
+    const sortedSuggestions = highlights
+      .map(h => h.suggestion)
+      .sort((a, b) => {
+        const priorityA = SUGGESTION_PRIORITY[a.type] || 99
+        const priorityB = SUGGESTION_PRIORITY[b.type] || 99
+        return priorityA - priorityB
+      })
+    setSuggestions(sortedSuggestions)
+  }, [highlights, setSuggestions])
 
   useEffect(() => {
     if (initialDocument) {
@@ -285,7 +341,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setIsCheckingRealTime(false)
 
     if (result.isSuccess && result.data) {
-      const newHighlights: HighlightedText[] = result.data.map((suggestion) => ({
+      const newHighlights: HighlightedText[] = result.data.map(suggestion => ({
         id: suggestion.id,
         start: suggestion.span?.start || 0,
         end: suggestion.span?.end || 0,
@@ -302,8 +358,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setIsAnalyzing(true)
     setProviderIsAnalyzing(true)
     try {
-      const action = useParallelAnalysis 
-        ? analyzeTextInParallelAction 
+      const action = useParallelAnalysis
+        ? analyzeTextInParallelAction
         : analyzeTextAction
 
       const result = await action({
@@ -320,7 +376,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)
         const newHighlights: HighlightedText[] =
-          result.data.overallSuggestions.map((suggestion) => ({
+          result.data.overallSuggestions.map(suggestion => ({
             id: suggestion.id,
             start: suggestion.span?.start || 0,
             end: suggestion.span?.end || 0,
@@ -357,19 +413,17 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       contentRef.current.slice(0, highlight.start) +
       suggestedText +
       contentRef.current.slice(highlight.end)
-    
+
     contentRef.current = newContent
     setContent(newContent)
     setContentForWordCount(newContent)
     updateHistory(newContent)
 
-    const adjustment =
-      suggestedText.length -
-      (highlight.end - highlight.start)
-    
+    const adjustment = suggestedText.length - (highlight.end - highlight.start)
+
     const newDeepHighlights = deepHighlights
-      .filter((h) => h.id !== highlight.id)
-      .map((h) =>
+      .filter(h => h.id !== highlight.id)
+      .map(h =>
         h.start > highlight.end
           ? {
               ...h,
@@ -381,8 +435,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setDeepHighlights(newDeepHighlights)
 
     const newRealTimeHighlights = realTimeHighlights
-      .filter((h) => h.id !== highlight.id)
-      .map((h) =>
+      .filter(h => h.id !== highlight.id)
+      .map(h =>
         h.start > highlight.end
           ? {
               ...h,
@@ -397,8 +451,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const dismissSuggestion = (highlightId: string) => {
-    setDeepHighlights(prev => prev.filter((h) => h.id !== highlightId))
-    setRealTimeHighlights(prev => prev.filter((h) => h.id !== highlightId))
+    setDeepHighlights(prev => prev.filter(h => h.id !== highlightId))
+    setRealTimeHighlights(prev => prev.filter(h => h.id !== highlightId))
     setSelectedSuggestion(null)
   }
 
@@ -451,7 +505,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex - 1
       setCurrentHistoryIndex(newIndex)
-      
+
       const newContent = history[newIndex]
       contentRef.current = newContent
       setContent(newContent)
@@ -480,7 +534,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0
-    const isUndo = (isMac ? e.metaKey : e.ctrlKey) && e.key === "z" && !e.shiftKey
+    const isUndo =
+      (isMac ? e.metaKey : e.ctrlKey) && e.key === "z" && !e.shiftKey
     const isRedo =
       (isMac && e.metaKey && e.shiftKey && e.key === "z") ||
       (!isMac && e.ctrlKey && e.key === "y")
@@ -491,9 +546,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     } else if (isRedo) {
       e.preventDefault()
       handleRedo()
-    } else if (e.key === 'Enter') {
+    } else if (e.key === "Enter") {
       e.preventDefault()
-      window.document.execCommand('insertLineBreak')
+      window.document.execCommand("insertLineBreak")
     }
   }
 
@@ -515,17 +570,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const renderHighlightedHTML = () => {
     const escape = (text: string) =>
-      text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
+      text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
     if (highlights.length === 0) {
       return escape(contentRef.current)
     }
 
     const points = new Set([0, contentRef.current.length])
-    highlights.forEach((h) => {
+    highlights.forEach(h => {
       points.add(h.start)
       points.add(h.end)
     })
@@ -543,7 +595,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const escapedSegmentText = escape(segmentText)
 
       const coveringHighlights = highlights.filter(
-        (h) => h.start <= start && h.end >= end
+        h => h.start <= start && h.end >= end
       )
 
       if (coveringHighlights.length > 0) {
@@ -555,7 +607,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
         const allTitles = coveringHighlights
           .map(
-            (h) =>
+            h =>
               `${h.suggestion.title} (${h.type}): "${h.suggestion.originalText}" → "${h.suggestion.suggestedText}"`
           )
           .join("\n")
@@ -585,12 +637,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const newHTML = renderHighlightedHTML()
       if (textareaRef.current.innerHTML !== newHTML) {
         const cursorPosition = getCursorPosition(textareaRef.current)
-        
+
         isUpdatingFromEffect.current = true
         textareaRef.current.innerHTML = newHTML
-        
+
         setCursorPosition(textareaRef.current, cursorPosition)
-        
+
         queueMicrotask(() => {
           isUpdatingFromEffect.current = false
         })
@@ -609,23 +661,23 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [])
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center gap-3 flex-1">
+    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
+        <div className="flex flex-1 items-center gap-3">
           {document && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => router.push("/")}
-              className="text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4" />
             </Button>
           )}
           <Input
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="text-lg font-semibold border-none bg-transparent p-0 focus-visible:ring-0 text-gray-900"
+            onChange={e => setTitle(e.target.value)}
+            className="border-none bg-transparent p-0 text-lg font-semibold text-gray-900 focus-visible:ring-0"
             placeholder="Untitled Document"
           />
         </div>
@@ -635,34 +687,40 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             onClick={handleSave}
             disabled={isSaving}
             size="sm"
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-blue-600 text-white hover:bg-blue-700"
           >
-            <Save className="h-4 w-4 mr-2" />
+            <Save className="mr-2 size-4" />
             {isSaving ? "Saving..." : "Save"}
           </Button>
           {document && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-                  <Settings className="h-4 w-4" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+                >
+                  <Settings className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => setShowDeleteAlert(true)}
-                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                  className="text-red-600 focus:bg-red-50 focus:text-red-600"
                 >
-                  <Trash2 className="h-4 w-4 mr-2" />
+                  <Trash2 className="mr-2 size-4" />
                   Delete
                 </DropdownMenuItem>
                 <div className="p-2">
                   <div className="flex items-center space-x-2">
-                    <Switch 
-                      id="parallel-analysis" 
+                    <Switch
+                      id="parallel-analysis"
                       checked={useParallelAnalysis}
                       onCheckedChange={setUseParallelAnalysis}
                     />
-                    <Label htmlFor="parallel-analysis" className="text-sm">Parallel Analysis</Label>
+                    <Label htmlFor="parallel-analysis" className="text-sm">
+                      Parallel Analysis
+                    </Label>
                   </div>
                 </div>
               </DropdownMenuContent>
@@ -671,25 +729,25 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 p-4">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleUndo}
             disabled={currentHistoryIndex <= 0 || isRewriting}
-            className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
           >
-            <Undo className="h-4 w-4" />
+            <Undo className="size-4" />
           </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleRedo}
             disabled={currentHistoryIndex >= history.length - 1 || isRewriting}
-            className="text-gray-700 hover:text-gray-900 hover:bg-gray-200 disabled:opacity-50"
+            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
           >
-            <Redo className="h-4 w-4" />
+            <Redo className="size-4" />
           </Button>
           <Separator orientation="vertical" className="h-6" />
           <Button
@@ -697,17 +755,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             size="sm"
             onClick={analyzeText}
             disabled={isAnalyzing || !hasManuallyEdited || isRewriting}
-            className="text-blue-700 hover:text-blue-900 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-blue-700 hover:bg-blue-100 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Sparkles className={`h-4 w-4 mr-2 ${isAnalyzing ? 'animate-spin' : ''}`} />
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+            <Sparkles
+              className={`mr-2 size-4 ${isAnalyzing ? "animate-spin" : ""}`}
+            />
+            {isAnalyzing ? "Analyzing..." : "Analyze"}
           </Button>
         </div>
-        
+
         <Separator orientation="vertical" className="h-6" />
 
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-gray-600">Rewrite Tone:</span>
+          <span className="text-sm font-medium text-gray-600">
+            Rewrite Tone:
+          </span>
           {["Casual", "Formal", "Confident", "Witty"].map(tone => (
             <Button
               key={tone}
@@ -721,7 +783,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             </Button>
           ))}
         </div>
-        
+
         {highlights.length > 0 && (
           <div className="ml-auto flex items-center">
             <Badge variant="secondary" className="ml-2">
@@ -732,41 +794,41 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       {highlights.length > 0 && (
-        <div className="px-6 py-2 border-b border-gray-200 bg-gray-50">
+        <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
           <div className="flex items-center gap-4 text-xs">
-            <span className="text-gray-600 font-medium">Legend:</span>
+            <span className="font-medium text-gray-600">Legend:</span>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-red-200 border-b-2 border-red-400 rounded-sm"></div>
+              <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
               <span className="text-gray-600">Grammar/Spelling</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-blue-200 border-b-2 border-blue-400 rounded-sm"></div>
+              <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
               <span className="text-gray-600">Clarity</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-orange-200 border-b-2 border-orange-400 rounded-sm"></div>
+              <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
               <span className="text-gray-600">Conciseness</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-purple-200 border-b-2 border-purple-400 rounded-sm"></div>
+              <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
               <span className="text-gray-600">Passive Voice</span>
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex-1 p-6 bg-white relative">
+      <div className="relative flex-1 bg-white p-6">
         <div
           ref={textareaRef}
           contentEditable
           suppressContentEditableWarning={true}
           onKeyDown={handleKeyDown}
-          onInput={(e) => {
+          onInput={e => {
             if (isUpdatingFromEffect.current) {
               return
             }
             const newContent = e.currentTarget.innerText || ""
-            
+
             contentRef.current = newContent
             setContent(newContent)
             setContentForWordCount(newContent)
@@ -779,7 +841,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             debouncedUpdateHistory(newContent)
             throttledRealTimeCheck(newContent)
           }}
-          onClick={(e) => {
+          onClick={e => {
             const target = e.target as HTMLElement
             if (target.dataset.suggestionId) {
               e.preventDefault()
@@ -799,44 +861,51 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               }
             }
           }}
-          className="w-full h-full resize-none border-none outline-none text-gray-900 bg-transparent leading-relaxed text-base font-normal focus:outline-none p-0 m-0"
+          className="m-0 size-full resize-none border-none bg-transparent p-0 text-base font-normal leading-relaxed text-gray-900 outline-none focus:outline-none"
           style={{
-            fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
-            fontSize: '16px',
-            lineHeight: '1.625',
-            letterSpacing: 'normal',
-            wordSpacing: 'normal',
-            padding: '0',
-            margin: '0',
-            border: 'none',
-            whiteSpace: 'pre-wrap',
-            wordWrap: 'break-word'
+            fontFamily:
+              'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+            fontSize: "16px",
+            lineHeight: "1.625",
+            letterSpacing: "normal",
+            wordSpacing: "normal",
+            padding: "0",
+            margin: "0",
+            border: "none",
+            whiteSpace: "pre-wrap",
+            wordWrap: "break-word"
           }}
         />
       </div>
 
-      <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600 flex justify-between items-center">
+      <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-6 py-3 text-sm text-gray-600">
         <span>
-          {contentForWordCount.split(" ").filter((word) => word.length > 0).length} words • {contentForWordCount.length} characters
+          {
+            contentForWordCount.split(" ").filter(word => word.length > 0)
+              .length
+          }{" "}
+          words • {contentForWordCount.length} characters
         </span>
         {(isAnalyzing || isCheckingRealTime) && (
           <span className="text-blue-600">
-            <Sparkles className="h-4 w-4 inline animate-spin mr-1" />
+            <Sparkles className="mr-1 inline size-4 animate-spin" />
             {isAnalyzing ? "Analyzing..." : "Checking..."}
           </span>
         )}
       </div>
 
       {selectedSuggestion && (
-        <div className="fixed inset-0 bg-black bg-opacity-20 z-50 flex items-center justify-center p-4">
-          <Card className="max-w-md w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20 p-4">
+          <Card className="w-full max-w-md">
             <CardContent className="p-6">
-              <div className="flex items-start justify-between mb-4">
+              <div className="mb-4 flex items-start justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{selectedSuggestion.icon}</span>
                   <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{selectedSuggestion.title}</h3>
-                    <Badge variant="outline" className="text-xs mt-1">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                      {selectedSuggestion.title}
+                    </h3>
+                    <Badge variant="outline" className="mt-1 text-xs">
                       {selectedSuggestion.type}
                     </Badge>
                   </div>
@@ -846,37 +915,45 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   size="sm"
                   onClick={() => setSelectedSuggestion(null)}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="size-4" />
                 </Button>
               </div>
 
-              <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{selectedSuggestion.description}</p>
+              <p className="mb-4 text-sm text-gray-700 dark:text-gray-300">
+                {selectedSuggestion.description}
+              </p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">Original:</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
+                    Original:
+                  </label>
                   <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
                     <del>{selectedSuggestion.originalText}</del>
                   </div>
                 </div>
-                
+
                 <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">Suggested:</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
+                    Suggested:
+                  </label>
                   <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-200">
                     <strong>{selectedSuggestion.suggestedText}</strong>
                   </div>
                 </div>
               </div>
 
-              <div className="flex gap-2 mt-6">
+              <div className="mt-6 flex gap-2">
                 <Button
                   onClick={() => {
-                    const highlight = highlights.find(h => h.suggestion.id === selectedSuggestion.id)
+                    const highlight = highlights.find(
+                      h => h.suggestion.id === selectedSuggestion.id
+                    )
                     if (highlight) applySuggestion(highlight)
                   }}
                   className="flex-1"
                 >
-                  <Check className="h-4 w-4 mr-2" />
+                  <Check className="mr-2 size-4" />
                   Apply
                 </Button>
                 <Button
@@ -888,7 +965,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 </Button>
               </div>
 
-              <div className="text-center mt-4">
+              <div className="mt-4 text-center">
                 <Badge variant="secondary" className="text-xs">
                   {selectedSuggestion.confidence}% confidence
                 </Badge>
@@ -902,14 +979,18 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure you want to delete this document?</AlertDialogTitle>
+              <AlertDialogTitle>
+                Are you sure you want to delete this document?
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 This action cannot be undone. This will permanently delete the
                 document and remove all associated data.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={isDeleting}>
+                Cancel
+              </AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={isDeleting}
@@ -923,4 +1004,4 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       )}
     </div>
   )
-} 
+}

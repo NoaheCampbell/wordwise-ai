@@ -26,23 +26,24 @@ export function EmailVerificationBanner() {
   const handleResendEmail = async () => {
     setIsLoading(true)
     const result = await resendVerificationEmail()
-    
+
     if (result.success) {
       toast.success("Verification email sent! Check your inbox.")
     } else {
       toast.error("Failed to send verification email. Please try again.")
     }
-    
+
     setIsLoading(false)
   }
 
   return (
     <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
-      <Mail className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+      <Mail className="size-4 text-amber-600 dark:text-amber-400" />
       <AlertDescription className="flex items-center justify-between pr-4">
         <div className="flex-1">
           <span className="text-amber-800 dark:text-amber-200">
-            Please verify your email address ({primaryEmail?.emailAddress}) to access all features.
+            Please verify your email address ({primaryEmail?.emailAddress}) to
+            access all features.
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -59,12 +60,12 @@ export function EmailVerificationBanner() {
             variant="ghost"
             size="sm"
             onClick={() => setIsHidden(true)}
-            className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900"
+            className="size-8 p-0 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900"
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
       </AlertDescription>
     </Alert>
   )
-} 
+}

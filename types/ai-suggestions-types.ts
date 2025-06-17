@@ -4,12 +4,12 @@ Types for AI-powered grammar and style suggestions.
 </ai_context>
 */
 
-export type SuggestionType = 
-  | "grammar" 
-  | "spelling" 
-  | "clarity" 
-  | "conciseness" 
-  | "passive-voice" 
+export type SuggestionType =
+  | "grammar"
+  | "spelling"
+  | "clarity"
+  | "conciseness"
+  | "passive-voice"
   | "tone"
   | "cta"
 
@@ -59,4 +59,4 @@ export interface AnalysisResult {
 export interface AnalyzeTextRequest {
   text: string
   analysisTypes: SuggestionType[]
-} 
+}

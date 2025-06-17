@@ -4,11 +4,18 @@ Schema for storing user tone preferences and writing settings.
 </ai_context>
 */
 
-import { pgEnum, pgTable, text, timestamp, uuid, jsonb } from "drizzle-orm/pg-core"
+import {
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  jsonb
+} from "drizzle-orm/pg-core"
 
 export const toneEnum = pgEnum("tone", [
   "professional",
-  "casual", 
+  "casual",
   "witty",
   "bold",
   "helpful",
@@ -23,12 +30,9 @@ export const userPreferencesTable = pgTable("user_preferences", {
   defaultTone: toneEnum("default_tone").default("professional"),
   customTones: jsonb("custom_tones").$type<string[]>().default([]),
   autoSaveEnabled: text("auto_save_enabled").default("true"), // Using text for boolean compatibility
-  suggestionTypes: jsonb("suggestion_types").$type<string[]>().default([
-    "grammar", 
-    "spelling", 
-    "style", 
-    "clarity"
-  ]),
+  suggestionTypes: jsonb("suggestion_types")
+    .$type<string[]>()
+    .default(["grammar", "spelling", "style", "clarity"]),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
@@ -37,4 +41,4 @@ export const userPreferencesTable = pgTable("user_preferences", {
 })
 
 export type InsertUserPreferences = typeof userPreferencesTable.$inferInsert
-export type SelectUserPreferences = typeof userPreferencesTable.$inferSelect 
+export type SelectUserPreferences = typeof userPreferencesTable.$inferSelect

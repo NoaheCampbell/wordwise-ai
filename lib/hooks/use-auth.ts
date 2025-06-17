@@ -13,12 +13,13 @@ export function useAuth() {
   const { user, isLoaded, isSignedIn } = useUser()
   const router = useRouter()
 
-  const isEmailVerified = user?.emailAddresses.some(
-    (email) => email.verification?.status === "verified"
-  ) ?? false
+  const isEmailVerified =
+    user?.emailAddresses.some(
+      email => email.verification?.status === "verified"
+    ) ?? false
 
   const primaryEmail = user?.emailAddresses.find(
-    (email) => email.id === user.primaryEmailAddressId
+    email => email.id === user.primaryEmailAddressId
   )
 
   const resendVerificationEmail = async () => {
@@ -52,4 +53,4 @@ export function useAuth() {
     redirectToVerification,
     redirectToLogin
   }
-} 
+}

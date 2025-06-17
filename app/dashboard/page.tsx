@@ -25,7 +25,7 @@ export default function DashboardPage() {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="mx-auto size-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -33,4 +33,4 @@ export default function DashboardPage() {
   }
 
   return null
-} 
+}

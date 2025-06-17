@@ -17,24 +17,22 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
   title: "WordWise AI",
-  description: "The AI-powered writing assistant for modern teams",
+  description: "The AI-powered writing assistant for modern teams"
 }
 
 export default async function RootLayout({
-  children,
+  children
 }: {
   children: React.ReactNode
 }) {
   return (
     <ClerkProvider
       appearance={{
-        baseTheme: dark,
+        baseTheme: dark
       }}
     >
       <html lang="en" suppressHydrationWarning>
-        <body
-          className={inter.className}
-        >
+        <body className={inter.className}>
           <Providers>
             <DocumentProvider>
               <div className="relative flex min-h-screen flex-col">

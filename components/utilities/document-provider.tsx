@@ -41,7 +41,9 @@ interface DocumentContextType {
   dismissSuggestion: (id: string) => void
 }
 
-const DocumentContext = createContext<DocumentContextType | undefined>(undefined)
+const DocumentContext = createContext<DocumentContextType | undefined>(
+  undefined
+)
 
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const { user } = useUser()

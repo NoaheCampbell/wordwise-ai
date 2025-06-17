@@ -18,22 +18,22 @@ export function AuthStatus() {
   return (
     <div className="flex items-center gap-2">
       {isEmailVerified ? (
-        <Badge 
-          variant="outline" 
-          className="bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200"
+        <Badge
+          variant="outline"
+          className="border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
         >
-          <CheckCircle className="w-3 h-3 mr-1" />
+          <CheckCircle className="mr-1 size-3" />
           Verified
         </Badge>
       ) : (
-        <Badge 
-          variant="outline" 
-          className="bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-950 dark:border-amber-800 dark:text-amber-200"
+        <Badge
+          variant="outline"
+          className="border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
         >
-          <AlertCircle className="w-3 h-3 mr-1" />
+          <AlertCircle className="mr-1 size-3" />
           Unverified
         </Badge>
       )}
     </div>
   )
-} 
+}

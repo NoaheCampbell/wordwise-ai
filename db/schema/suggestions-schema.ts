@@ -4,12 +4,20 @@ Schema for storing AI-generated writing suggestions and user feedback.
 </ai_context>
 */
 
-import { pgEnum, pgTable, text, timestamp, uuid, boolean, integer } from "drizzle-orm/pg-core"
+import {
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  boolean,
+  integer
+} from "drizzle-orm/pg-core"
 import { documentsTable } from "./documents-schema"
 
 export const suggestionTypeEnum = pgEnum("suggestion_type", [
   "grammar",
-  "spelling", 
+  "spelling",
   "style",
   "clarity",
   "conciseness",
@@ -42,4 +50,4 @@ export const suggestionsTable = pgTable("suggestions", {
 })
 
 export type InsertSuggestion = typeof suggestionsTable.$inferInsert
-export type SelectSuggestion = typeof suggestionsTable.$inferSelect 
+export type SelectSuggestion = typeof suggestionsTable.$inferSelect

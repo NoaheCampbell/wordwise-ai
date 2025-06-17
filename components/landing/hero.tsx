@@ -69,11 +69,7 @@ export const HeroSection = () => {
           transition={{ duration: 0.6, delay: 0.8, ease: "easeOut" }}
         >
           <Button asChild size="lg">
-            <Link
-              href="/dashboard"
-              onClick={() => {
-              }}
-            >
+            <Link href="/dashboard" onClick={() => {}}>
               Get Started
             </Link>
           </Button>

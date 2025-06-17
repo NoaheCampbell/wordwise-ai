@@ -6,7 +6,8 @@ import { Undo, Redo, Save } from "lucide-react"
 import { useState } from "react"
 
 export function Editor() {
-  const [content, setContent] = useState(`Subject: Exciting Updates from Our AI Writing Assistant
+  const [content, setContent] =
+    useState(`Subject: Exciting Updates from Our AI Writing Assistant
 
 Dear Valued Subscribers,
 
@@ -24,39 +25,52 @@ Best regards,
 The WordWise AI Team`)
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-full flex flex-col">
+    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 p-4 border-b border-gray-200 bg-gray-50">
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-          <Undo className="h-4 w-4" />
+      <div className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 p-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+        >
+          <Undo className="size-4" />
         </Button>
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-          <Redo className="h-4 w-4" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+        >
+          <Redo className="size-4" />
         </Button>
         <Separator orientation="vertical" className="h-6" />
-        <Button variant="ghost" size="sm" className="text-gray-700 hover:text-gray-900 hover:bg-gray-200">
-          <Save className="h-4 w-4 mr-2" />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+        >
+          <Save className="mr-2 size-4" />
           Save
         </Button>
       </div>
 
       {/* Editor Area */}
-      <div className="flex-1 p-6 bg-white">
+      <div className="flex-1 bg-white p-6">
         <textarea
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          className="w-full h-full resize-none border-none outline-none text-gray-900 bg-white leading-relaxed text-base font-normal placeholder:text-gray-400"
+          onChange={e => setContent(e.target.value)}
+          className="size-full resize-none border-none bg-white text-base font-normal leading-relaxed text-gray-900 outline-none placeholder:text-gray-400"
           placeholder="Start writing your content here..."
           style={{
             fontFamily:
-              'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif',
+              'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif'
           }}
         />
       </div>
 
       {/* Word Count */}
-      <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600">
-        {content.split(" ").filter((word) => word.length > 0).length} words • {content.length} characters
+      <div className="border-t border-gray-200 bg-gray-50 px-6 py-3 text-sm text-gray-600">
+        {content.split(" ").filter(word => word.length > 0).length} words •{" "}
+        {content.length} characters
       </div>
     </div>
   )

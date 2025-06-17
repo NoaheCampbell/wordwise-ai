@@ -25,7 +25,7 @@ export default function WritingApp() {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="mx-auto size-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -41,22 +41,22 @@ export default function WritingApp() {
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full bg-gray-50">
         <DocumentSidebar />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-w-0 flex-1 flex-col">
           <TopNav />
-          
+
           {/* Email verification banner */}
           <div className="px-6 pt-4">
             <EmailVerificationBanner />
           </div>
 
-          <main className="flex-1 flex min-h-0">
+          <main className="flex min-h-0 flex-1">
             {/* Main Editor Column */}
-            <div className="flex-[2] p-6 min-w-0">
+            <div className="min-w-0 flex-[2] p-6">
               <EnhancedEditor />
             </div>
 
             {/* AI Suggestions Panel */}
-            <div className="flex-1 border-l border-gray-200 bg-white min-w-0">
+            <div className="min-w-0 flex-1 border-l border-gray-200 bg-white">
               <AISuggestionsPanel />
             </div>
           </main>

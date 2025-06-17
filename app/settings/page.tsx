@@ -1,25 +1,37 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTheme } from "next-themes"
 import { useRouter } from "next/navigation"
-import { 
-  Settings, 
-  Palette, 
-  Brain, 
-  FileText, 
-  Bell, 
-  Shield, 
+import {
+  Settings,
+  Palette,
+  Brain,
+  FileText,
+  Bell,
+  Shield,
   Save,
   Moon,
   Sun,
@@ -47,25 +59,25 @@ export default function SettingsPage() {
 
   const handleSaveSettings = async () => {
     setIsLoading(true)
-    
+
     // Simulate saving settings
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
     toast.success("Settings saved successfully!")
     setIsLoading(false)
   }
 
   return (
-    <div className="container mx-auto py-10 max-w-4xl">
+    <div className="container mx-auto max-w-4xl py-10">
       <div className="space-y-6">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => router.push("/")}
             className="flex items-center gap-2"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             Back to App
           </Button>
           <div>
@@ -81,19 +93,22 @@ export default function SettingsPage() {
         <Tabs defaultValue="writing" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="writing" className="flex items-center gap-2">
-              <Brain className="h-4 w-4" />
+              <Brain className="size-4" />
               Writing
             </TabsTrigger>
             <TabsTrigger value="appearance" className="flex items-center gap-2">
-              <Palette className="h-4 w-4" />
+              <Palette className="size-4" />
               Appearance
             </TabsTrigger>
-            <TabsTrigger value="notifications" className="flex items-center gap-2">
-              <Bell className="h-4 w-4" />
+            <TabsTrigger
+              value="notifications"
+              className="flex items-center gap-2"
+            >
+              <Bell className="size-4" />
               Notifications
             </TabsTrigger>
             <TabsTrigger value="privacy" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
+              <Shield className="size-4" />
               Privacy
             </TabsTrigger>
           </TabsList>
@@ -103,7 +118,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5" />
+                  <Brain className="size-5" />
                   AI Writing Assistant
                 </CardTitle>
                 <CardDescription>
@@ -123,64 +138,67 @@ export default function SettingsPage() {
                       <SelectItem value="friendly">Friendly</SelectItem>
                       <SelectItem value="persuasive">Persuasive</SelectItem>
                       <SelectItem value="creative">Creative</SelectItem>
-                      <SelectItem value="authoritative">Authoritative</SelectItem>
+                      <SelectItem value="authoritative">
+                        Authoritative
+                      </SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-sm text-muted-foreground">
-                    This tone will be used by default for AI suggestions and rewrites.
+                  <p className="text-muted-foreground text-sm">
+                    This tone will be used by default for AI suggestions and
+                    rewrites.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>AI Suggestions</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Show real-time writing suggestions
                       </p>
                     </div>
-                    <Switch 
-                      checked={suggestionsEnabled} 
-                      onCheckedChange={setSuggestionsEnabled} 
+                    <Switch
+                      checked={suggestionsEnabled}
+                      onCheckedChange={setSuggestionsEnabled}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Grammar Check</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Highlight grammar and spelling errors
                       </p>
                     </div>
-                    <Switch 
-                      checked={grammarCheckEnabled} 
-                      onCheckedChange={setGrammarCheckEnabled} 
+                    <Switch
+                      checked={grammarCheckEnabled}
+                      onCheckedChange={setGrammarCheckEnabled}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Clarity Score</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Show document clarity metrics
                       </p>
                     </div>
-                    <Switch 
-                      checked={clarityScoreEnabled} 
-                      onCheckedChange={setClarityScoreEnabled} 
+                    <Switch
+                      checked={clarityScoreEnabled}
+                      onCheckedChange={setClarityScoreEnabled}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Auto-save</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Automatically save document changes
                       </p>
                     </div>
-                    <Switch 
-                      checked={autoSaveEnabled} 
-                      onCheckedChange={setAutoSaveEnabled} 
+                    <Switch
+                      checked={autoSaveEnabled}
+                      onCheckedChange={setAutoSaveEnabled}
                     />
                   </div>
                 </div>
@@ -193,7 +211,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Palette className="h-5 w-5" />
+                  <Palette className="size-5" />
                   Theme & Appearance
                 </CardTitle>
                 <CardDescription>
@@ -209,7 +227,7 @@ export default function SettingsPage() {
                       onClick={() => setTheme("light")}
                       className="flex items-center gap-2"
                     >
-                      <Sun className="h-4 w-4" />
+                      <Sun className="size-4" />
                       Light
                     </Button>
                     <Button
@@ -217,7 +235,7 @@ export default function SettingsPage() {
                       onClick={() => setTheme("dark")}
                       className="flex items-center gap-2"
                     >
-                      <Moon className="h-4 w-4" />
+                      <Moon className="size-4" />
                       Dark
                     </Button>
                     <Button
@@ -225,7 +243,7 @@ export default function SettingsPage() {
                       onClick={() => setTheme("system")}
                       className="flex items-center gap-2"
                     >
-                      <Monitor className="h-4 w-4" />
+                      <Monitor className="size-4" />
                       System
                     </Button>
                   </div>
@@ -254,7 +272,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Bell className="h-5 w-5" />
+                  <Bell className="size-5" />
                   Notifications
                 </CardTitle>
                 <CardDescription>
@@ -266,39 +284,39 @@ export default function SettingsPage() {
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Email Notifications</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Receive important updates via email
                       </p>
                     </div>
-                    <Switch 
-                      checked={emailNotifications} 
-                      onCheckedChange={setEmailNotifications} 
+                    <Switch
+                      checked={emailNotifications}
+                      onCheckedChange={setEmailNotifications}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Document Reminders</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Get reminded to work on unfinished documents
                       </p>
                     </div>
-                    <Switch 
-                      checked={documentReminders} 
-                      onCheckedChange={setDocumentReminders} 
+                    <Switch
+                      checked={documentReminders}
+                      onCheckedChange={setDocumentReminders}
                     />
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <Label>Weekly Digest</Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-muted-foreground text-sm">
                         Weekly summary of your writing progress
                       </p>
                     </div>
-                    <Switch 
-                      checked={weeklyDigest} 
-                      onCheckedChange={setWeeklyDigest} 
+                    <Switch
+                      checked={weeklyDigest}
+                      onCheckedChange={setWeeklyDigest}
                     />
                   </div>
                 </div>
@@ -311,7 +329,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
+                  <Shield className="size-5" />
                   Privacy & Security
                 </CardTitle>
                 <CardDescription>
@@ -320,11 +338,12 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
-                  <div className="p-4 border rounded-lg bg-muted/50">
-                    <h4 className="font-medium mb-2">Data Usage</h4>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Your documents are processed by AI to provide suggestions and improvements. 
-                      We use industry-standard encryption and do not store your content permanently.
+                  <div className="bg-muted/50 rounded-lg border p-4">
+                    <h4 className="mb-2 font-medium">Data Usage</h4>
+                    <p className="text-muted-foreground mb-3 text-sm">
+                      Your documents are processed by AI to provide suggestions
+                      and improvements. We use industry-standard encryption and
+                      do not store your content permanently.
                     </p>
                     <Badge variant="outline">End-to-End Encrypted</Badge>
                   </div>
@@ -342,7 +361,7 @@ export default function SettingsPage() {
                         <SelectItem value="1year">1 year</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       How long to keep your writing history and suggestions.
                     </p>
                   </div>
@@ -353,12 +372,16 @@ export default function SettingsPage() {
         </Tabs>
 
         <div className="flex justify-end">
-          <Button onClick={handleSaveSettings} disabled={isLoading} className="flex items-center gap-2">
-            <Save className="h-4 w-4" />
+          <Button
+            onClick={handleSaveSettings}
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            <Save className="size-4" />
             {isLoading ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </div>
     </div>
   )
-} 
+}

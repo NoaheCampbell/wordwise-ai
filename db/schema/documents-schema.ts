@@ -4,7 +4,14 @@ Schema for documents table to store user writing documents with version history.
 </ai_context>
 */
 
-import { pgTable, text, timestamp, uuid, jsonb, integer } from "drizzle-orm/pg-core"
+import {
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  jsonb,
+  integer
+} from "drizzle-orm/pg-core"
 
 export const documentsTable = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -23,4 +30,4 @@ export const documentsTable = pgTable("documents", {
 })
 
 export type InsertDocument = typeof documentsTable.$inferInsert
-export type SelectDocument = typeof documentsTable.$inferSelect 
+export type SelectDocument = typeof documentsTable.$inferSelect

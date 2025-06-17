@@ -20,7 +20,7 @@ export default function LoginPage() {
         forceRedirectUrl="/"
         fallbackRedirectUrl="/"
         signUpUrl="/signup"
-        appearance={{ 
+        appearance={{
           baseTheme: theme === "dark" ? dark : undefined,
           elements: {
             formButtonPrimary: "bg-blue-600 hover:bg-blue-700 text-white",
@@ -30,10 +30,10 @@ export default function LoginPage() {
           }
         }}
       />
-      
+
       {/* Custom forgot password link */}
       <div className="text-center">
-        <Link 
+        <Link
           href="/forgot-password"
           className="text-sm text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400 dark:hover:text-blue-300"
         >
