@@ -6,8 +6,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Undo, Redo, Save, Sparkles, Check, X, Trash2, Settings, ArrowLeft } from "lucide-react"
-import { useState, useEffect, useRef, useCallback, KeyboardEvent } from "react"
-import { analyzeTextAction, analyzeTextInParallelAction, rewriteWithToneAction } from "@/actions/ai-analysis-actions"
+import { useState, useEffect, useRef, useCallback, KeyboardEvent, useMemo } from "react"
+import { analyzeTextAction, analyzeTextInParallelAction, rewriteWithToneAction, checkGrammarAndSpellingAction } from "@/actions/ai-analysis-actions"
 import { AISuggestion, AnalysisResult, SuggestionType, SelectDocument } from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
@@ -71,8 +71,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [title, setTitle] = useState(initialDocument?.title || "Untitled Document")
   const [content, setContent] = useState(initialDocument?.content || "")
 
-  const [highlights, setHighlights] = useState<HighlightedText[]>([])
+  const [deepHighlights, setDeepHighlights] = useState<HighlightedText[]>([])
+  const [realTimeHighlights, setRealTimeHighlights] = useState<HighlightedText[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isCheckingRealTime, setIsCheckingRealTime] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
@@ -89,6 +91,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [hasManuallyEdited, setHasManuallyEdited] = useState(true)
   const [useParallelAnalysis, setUseParallelAnalysis] = useState(true)
   const [isRewriting, setIsRewriting] = useState(false)
+
+  const highlights = useMemo(() => [...deepHighlights, ...realTimeHighlights], [deepHighlights, realTimeHighlights])
 
   const applySuggestionById = (id: string) => {
     const highlight = highlights.find(h => h.id === id)
@@ -139,6 +143,30 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return debouncedFunc
   }
 
+  const throttle = <T extends (...args: any[]) => any>(
+    func: T,
+    limit: number
+  ) => {
+    let inThrottle: boolean
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    const throttledFunc = function (this: any, ...args: Parameters<T>) {
+      const context = this
+      if (!inThrottle) {
+        func.apply(context, args)
+        inThrottle = true
+        timeoutId = setTimeout(() => (inThrottle = false), limit)
+      }
+    }
+    throttledFunc.cancel = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+      inThrottle = false
+    }
+    return throttledFunc
+  }
+
   const updateHistory = (newContent: string) => {
     if (newContent === history[currentHistoryIndex]) return
     const newHistory = history.slice(0, currentHistoryIndex + 1)
@@ -154,19 +182,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     [history, currentHistoryIndex]
   )
 
-  const debouncedAnalyzeText = useCallback(
-    debounce(() => {
-      analyzeText()
+  const throttledRealTimeCheck = useCallback(
+    throttle((text: string) => {
+      handleRealTimeCheck(text)
     }, 2000),
     []
   )
-
-  useEffect(() => {
-    if (content) {
-      setHistory([content])
-      setCurrentHistoryIndex(0)
-    }
-  }, [])
 
   const handleSave = async () => {
     if (!user) {
@@ -245,11 +266,33 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setContent(newContent)
       setContentForWordCount(newContent)
       updateHistory(newContent)
-      setHighlights([])
+      setDeepHighlights([])
+      setRealTimeHighlights([])
       setSuggestions([])
       toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
     } else {
       toast.error(result.message)
+    }
+  }
+
+  const handleRealTimeCheck = async (textToCheck: string) => {
+    if (!textToCheck.trim()) {
+      setRealTimeHighlights([])
+      return
+    }
+    setIsCheckingRealTime(true)
+    const result = await checkGrammarAndSpellingAction(textToCheck)
+    setIsCheckingRealTime(false)
+
+    if (result.isSuccess && result.data) {
+      const newHighlights: HighlightedText[] = result.data.map((suggestion) => ({
+        id: suggestion.id,
+        start: suggestion.span?.start || 0,
+        end: suggestion.span?.end || 0,
+        type: suggestion.type,
+        suggestion
+      }))
+      setRealTimeHighlights(newHighlights)
     }
   }
 
@@ -284,8 +327,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             type: suggestion.type,
             suggestion
           }))
-        setHighlights(newHighlights)
-        setSuggestions(result.data.overallSuggestions)
+        setDeepHighlights(newHighlights)
+        // We keep real-time highlights, but the deep analysis ones take precedence
+        // The rendering logic will handle overlaps based on priority
       }
     } catch (error) {
       console.error("Analysis error:", error)
@@ -297,7 +341,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const applySuggestion = (highlight: HighlightedText) => {
     debouncedUpdateHistory.cancel()
-    debouncedAnalyzeText.cancel()
+    throttledRealTimeCheck.cancel()
 
     let { suggestedText } = highlight.suggestion
     const { originalText } = highlight.suggestion
@@ -322,11 +366,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     const adjustment =
       suggestedText.length -
       (highlight.end - highlight.start)
-    const newHighlights = highlights
-      .filter((h) => {
-        const isContained = h.start >= highlight.start && h.end <= highlight.end
-        return !isContained
-      })
+    
+    const newDeepHighlights = deepHighlights
+      .filter((h) => h.id !== highlight.id)
       .map((h) =>
         h.start > highlight.end
           ? {
@@ -336,16 +378,27 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             }
           : h
       )
-    
-    setHighlights(newHighlights)
-    setSuggestions(newHighlights.map(h => h.suggestion))
+    setDeepHighlights(newDeepHighlights)
+
+    const newRealTimeHighlights = realTimeHighlights
+      .filter((h) => h.id !== highlight.id)
+      .map((h) =>
+        h.start > highlight.end
+          ? {
+              ...h,
+              start: h.start + adjustment,
+              end: h.end + adjustment
+            }
+          : h
+      )
+    setRealTimeHighlights(newRealTimeHighlights)
+
     setSelectedSuggestion(null)
   }
 
   const dismissSuggestion = (highlightId: string) => {
-    const newHighlights = highlights.filter((h) => h.id !== highlightId)
-    setHighlights(newHighlights)
-    setSuggestions(newHighlights.map(h => h.suggestion))
+    setDeepHighlights(prev => prev.filter((h) => h.id !== highlightId))
+    setRealTimeHighlights(prev => prev.filter((h) => h.id !== highlightId))
     setSelectedSuggestion(null)
   }
 
@@ -392,8 +445,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const handleUndo = () => {
-    debouncedAnalyzeText.cancel()
     debouncedUpdateHistory.cancel()
+    throttledRealTimeCheck.cancel()
     if (currentHistoryIndex > 0) {
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex - 1
@@ -403,13 +456,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
-      setHighlights([])
+      setDeepHighlights([])
+      setRealTimeHighlights([])
     }
   }
 
   const handleRedo = () => {
-    debouncedAnalyzeText.cancel()
     debouncedUpdateHistory.cancel()
+    throttledRealTimeCheck.cancel()
     if (currentHistoryIndex < history.length - 1) {
       isUndoRedoing.current = true
       const newIndex = currentHistoryIndex + 1
@@ -419,7 +473,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       contentRef.current = newContent
       setContent(newContent)
       setContentForWordCount(newContent)
-      setHighlights([])
+      setDeepHighlights([])
+      setRealTimeHighlights([])
     }
   }
 
@@ -716,14 +771,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             setContent(newContent)
             setContentForWordCount(newContent)
 
-            if(highlights.length > 0) {
-              setHighlights([])
-              setSuggestions([])
+            if (deepHighlights.length > 0) {
+              setDeepHighlights([])
             }
 
             setHasManuallyEdited(true)
             debouncedUpdateHistory(newContent)
-            debouncedAnalyzeText()
+            throttledRealTimeCheck(newContent)
           }}
           onClick={(e) => {
             const target = e.target as HTMLElement
@@ -765,10 +819,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         <span>
           {contentForWordCount.split(" ").filter((word) => word.length > 0).length} words • {contentForWordCount.length} characters
         </span>
-        {isAnalyzing && (
+        {(isAnalyzing || isCheckingRealTime) && (
           <span className="text-blue-600">
             <Sparkles className="h-4 w-4 inline animate-spin mr-1" />
-            Analyzing...
+            {isAnalyzing ? "Analyzing..." : "Checking..."}
           </span>
         )}
       </div>
