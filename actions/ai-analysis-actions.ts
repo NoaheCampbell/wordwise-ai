@@ -12,7 +12,22 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>): { start: number; end: number } | null {
+function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>, context?: string): { start: number; end: number } | null {
+  // If we have context, try to find the text within that context first
+  if (context && context.length > searchText.length) {
+    const contextIndex = fullText.indexOf(context)
+    if (contextIndex !== -1) {
+      const relativeIndex = context.indexOf(searchText)
+      if (relativeIndex !== -1) {
+        const absoluteIndex = contextIndex + relativeIndex
+        if (!usedPositions.has(absoluteIndex)) {
+          usedPositions.add(absoluteIndex)
+          return { start: absoluteIndex, end: absoluteIndex + searchText.length }
+        }
+      }
+    }
+  }
+
   let start = -1
   let searchFrom = 0
 
@@ -33,7 +48,7 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
     // Fallback for when the exact text isn't found (e.g., AI trims whitespace)
     const trimmedSearchText = searchText.trim()
     if (trimmedSearchText !== searchText) {
-        return findTextSpan(fullText, trimmedSearchText, usedPositions)
+        return findTextSpan(fullText, trimmedSearchText, usedPositions, context)
     }
     console.warn(`Could not find unused position for "${searchText}" in original text`)
     return null
@@ -69,7 +84,8 @@ Return your response as a single JSON object with a key "suggestions" containing
       "originalText": "the exact, original text with the issue",
       "suggestedText": "the improved or corrected version",
       "explanation": "a brief explanation of why the change is better",
-      "confidence": number (0-100)
+      "confidence": number (0-100),
+      "context": "a longer phrase (10-20 words) that includes the originalText to help locate it precisely"
     }
   ]
 }
@@ -80,6 +96,7 @@ Text to analyze:
 Important requirements:
 - Return ONLY a valid JSON object. Do not include any markdown formatting, explanations, or code blocks like \`\`\`json.
 - For "originalText", you MUST use the exact text from the source.
+- For "context", include 5-10 words before and after the originalText to provide positioning context.
 - If no issues are found, return an object with an empty "suggestions" array: { "suggestions": [] }.
 `
 }
@@ -130,7 +147,7 @@ export async function analyzeTextAction(
           return null
         }
 
-        const span = findTextSpan(text, rawSugg.originalText, usedPositions)
+        const span = findTextSpan(text, rawSugg.originalText, usedPositions, rawSugg.context)
         if (!span) {
           return null
         }
