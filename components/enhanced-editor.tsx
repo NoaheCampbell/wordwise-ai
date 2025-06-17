@@ -411,6 +411,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     } else if (isRedo) {
       e.preventDefault()
       handleRedo()
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      window.document.execCommand('insertLineBreak')
     }
   }
 
