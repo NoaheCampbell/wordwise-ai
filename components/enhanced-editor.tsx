@@ -811,7 +811,23 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
-  const handleSelectionChange = () => {
+  const handleSelectionChange = (e?: React.MouseEvent<HTMLDivElement>) => {
+    // Handle clicking on highlighted spans
+    if (e && e.target instanceof HTMLElement) {
+      const clickedElement = e.target as HTMLElement
+      const suggestionId = clickedElement.getAttribute("data-suggestion-id")
+
+      if (suggestionId) {
+        e.preventDefault()
+        const highlight = highlights.find(h => h.suggestion.id === suggestionId)
+        if (highlight) {
+          setSelectedSuggestion(highlight.suggestion)
+          return
+        }
+      }
+    }
+
+    // Default selection handling
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0 && textareaRef.current) {
       const range = selection.getRangeAt(0)
@@ -819,7 +835,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       preCaretRange.selectNodeContents(textareaRef.current)
       preCaretRange.setEnd(range.endContainer, range.endOffset)
       const newCursorPos = preCaretRange.toString().length
-      setCursorPosition(textareaRef.current, newCursorPos)
+      lastCursorPosition.current = newCursorPos
     }
   }
 
