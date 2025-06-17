@@ -90,6 +90,29 @@ const SUGGESTION_PRIORITY: Record<SuggestionType, number> = {
   cta: 7
 }
 
+function deduplicateHighlights(
+  highlights: HighlightedText[]
+): HighlightedText[] {
+  const sorted = [...highlights].sort((a, b) => {
+    const priDiff = SUGGESTION_PRIORITY[a.type] - SUGGESTION_PRIORITY[b.type]
+    if (priDiff !== 0) return priDiff
+    const lenA = a.end - a.start
+    const lenB = b.end - b.start
+    return lenA - lenB
+  })
+
+  const result: HighlightedText[] = []
+
+  for (const h of sorted) {
+    const overlaps = result.some(r => h.start < r.end && h.end > r.start)
+    if (!overlaps) {
+      result.push(h)
+    }
+  }
+
+  return result
+}
+
 export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const router = useRouter()
   const { user } = useUser()
@@ -217,26 +240,22 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     const adjustment = suggestedText.length - (highlight.end - highlight.start)
 
+    const spansOverlap = (a: { start: number; end: number }) =>
+      a.start < highlight.end && a.end > highlight.start
+
     const newDeepHighlights = deepHighlights
-      .filter(h => h.id !== highlight.id)
+      .filter(h => !spansOverlap(h))
       .map(h =>
         h.start > highlight.end
-          ? {
-              ...h,
-              start: h.start + adjustment,
-              end: h.end + adjustment
-            }
+          ? { ...h, start: h.start + adjustment, end: h.end + adjustment }
           : h
       )
+
     const newRealTimeHighlights = realTimeHighlights
-      .filter(h => h.id !== highlight.id)
+      .filter(h => !spansOverlap(h))
       .map(h =>
         h.start > highlight.end
-          ? {
-              ...h,
-              start: h.start + adjustment,
-              end: h.end + adjustment
-            }
+          ? { ...h, start: h.start + adjustment, end: h.end + adjustment }
           : h
       )
 
@@ -556,7 +575,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ""
-      const newHighlights: HighlightedText[] = []
+      const newHighlightsRaw: HighlightedText[] = []
 
       while (true) {
         const { done, value } = await reader.read()
@@ -584,7 +603,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   ? existingHighlight.suggestion
                   : suggestion
               }
-              newHighlights.push(highlight)
+              newHighlightsRaw.push(highlight)
             }
           } catch (e) {
             console.error("Error parsing suggestion from stream:", line, e)
@@ -593,8 +612,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       }
       setRealTimeHighlights(currentValidHighlights => {
         const currentIds = new Set(currentValidHighlights.map(h => h.id))
-        const highlightsToAdd = newHighlights.filter(h => !currentIds.has(h.id))
-        return [...currentValidHighlights, ...highlightsToAdd]
+        const highlightsToAdd = newHighlightsRaw.filter(
+          h => !currentIds.has(h.id)
+        )
+        return deduplicateHighlights([
+          ...currentValidHighlights,
+          ...highlightsToAdd
+        ])
       })
 
       lastAnalyzedText.current[level] = textToCheck
@@ -629,7 +653,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)
-        const newHighlights: HighlightedText[] =
+        const newHighlightsRaw: HighlightedText[] =
           result.data.overallSuggestions.map(suggestion => ({
             id: suggestion.id,
             start: suggestion.span?.start || 0,
@@ -637,7 +661,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             type: suggestion.type,
             suggestion
           }))
-        setDeepHighlights(newHighlights)
+        setDeepHighlights(deduplicateHighlights(newHighlightsRaw))
         // We keep real-time highlights, but the deep analysis ones take precedence
         // The rendering logic will handle overlaps based on priority
       }
