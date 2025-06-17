@@ -137,11 +137,134 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     [deepHighlights, realTimeHighlights]
   )
 
+  const getCursorPosition = (element: Node | null): number => {
+    if (!element) return 0
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0)
+      const preCaretRange = range.cloneRange()
+      preCaretRange.selectNodeContents(element)
+      preCaretRange.setEnd(range.endContainer, range.endOffset)
+      return preCaretRange.toString().length
+    }
+    return 0
+  }
+
+  const setCursorPosition = (element: Node | null, position: number) => {
+    if (!element) return
+    const range = window.document.createRange()
+    const sel = window.getSelection()
+    let charCount = 0
+
+    function findTextNode(node: Node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const text = node.textContent || ""
+        if (charCount + text.length >= position) {
+          range.setStart(node, position - charCount)
+          range.collapse(true)
+          return true
+        }
+        charCount += text.length
+      } else {
+        for (let i = 0; i < node.childNodes.length; i++) {
+          if (findTextNode(node.childNodes[i])) {
+            return true
+          }
+        }
+      }
+      return false
+    }
+
+    if (findTextNode(element)) {
+      if (sel) {
+        sel.removeAllRanges()
+        sel.addRange(range)
+      }
+    }
+  }
+
+  const applySuggestion = (highlight: HighlightedText) => {
+    throttledRealTimeCheck.cancel()
+    debouncedRealTimeCheck.cancel()
+
+    let { suggestedText } = highlight.suggestion
+    const { originalText } = highlight.suggestion
+
+    if (originalText.startsWith(" ") && !suggestedText.startsWith(" ")) {
+      suggestedText = " " + suggestedText
+    }
+    if (originalText.endsWith(" ") && !suggestedText.endsWith(" ")) {
+      suggestedText = suggestedText + " "
+    }
+
+    const newContent =
+      contentRef.current.slice(0, highlight.start) +
+      suggestedText +
+      contentRef.current.slice(highlight.end)
+
+    contentRef.current = newContent
+    setContent(newContent)
+    setContentForWordCount(newContent)
+
+    if (deepHighlights.length > 0) {
+      setDeepHighlights([])
+    }
+
+    setHasManuallyEdited(true)
+
+    setHistory(prevHistory => [...prevHistory, newContent])
+    setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+    const adjustment = suggestedText.length - (highlight.end - highlight.start)
+
+    const newDeepHighlights = deepHighlights
+      .filter(h => h.id !== highlight.id)
+      .map(h =>
+        h.start > highlight.end
+          ? {
+              ...h,
+              start: h.start + adjustment,
+              end: h.end + adjustment
+            }
+          : h
+      )
+    setDeepHighlights(newDeepHighlights)
+
+    const newRealTimeHighlights = realTimeHighlights
+      .filter(h => h.id !== highlight.id)
+      .map(h =>
+        h.start > highlight.end
+          ? {
+              ...h,
+              start: h.start + adjustment,
+              end: h.end + adjustment
+            }
+          : h
+      )
+    setRealTimeHighlights(newRealTimeHighlights)
+
+    setSelectedSuggestion(null)
+
+    if (textareaRef.current) {
+      isUpdatingFromEffect.current = true
+      textareaRef.current.innerHTML = renderHighlightedHTML()
+
+      const newCursorPos = highlight.start + suggestedText.length
+      setCursorPosition(textareaRef.current, newCursorPos)
+    }
+  }
+
   const applySuggestionById = (id: string) => {
     const highlight = highlights.find(h => h.id === id)
     if (highlight) {
       applySuggestion(highlight)
     }
+  }
+
+  const dismissSuggestion = (highlightId: string) => {
+    setDeepHighlights(prev => prev.filter(h => h.id !== highlightId))
+    setRealTimeHighlights(prev => prev.filter(h => h.id !== highlightId))
+    setSelectedSuggestion(null)
   }
 
   const dismissSuggestionById = (id: string) => {
@@ -216,8 +339,40 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const throttledRealTimeCheck = useCallback(
     throttle((text: string) => {
-      handleRealTimeCheck(text)
+      handleRealTimeCheck(text, "spelling")
     }, 500),
+    []
+  )
+
+  const debounce = <T extends (...args: any[]) => void>(
+    func: T,
+    delay: number
+  ) => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const debouncedFunc = (...args: Parameters<T>) => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      timeoutId = setTimeout(() => {
+        func(...args)
+      }, delay)
+    }
+
+    debouncedFunc.cancel = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    }
+
+    return debouncedFunc
+  }
+
+  const debouncedRealTimeCheck = useCallback(
+    debounce((text: string) => {
+      handleRealTimeCheck(text, "full")
+    }, 1000),
     []
   )
 
@@ -309,7 +464,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
-  const handleRealTimeCheck = async (textToCheck: string) => {
+  const handleRealTimeCheck = async (
+    textToCheck: string,
+    level: "spelling" | "full"
+  ) => {
     if (!textToCheck.trim()) {
       setRealTimeHighlights([])
       return
@@ -323,7 +481,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ text: textToCheck })
+        body: JSON.stringify({ text: textToCheck, level })
       })
 
       if (!response.ok) {
@@ -418,118 +576,48 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
-  const applySuggestion = (highlight: HighlightedText) => {
-    throttledRealTimeCheck.cancel()
-
-    let { suggestedText } = highlight.suggestion
-    const { originalText } = highlight.suggestion
-
-    if (originalText.startsWith(" ") && !suggestedText.startsWith(" ")) {
-      suggestedText = " " + suggestedText
+  const handleContentChange = (newContent: string) => {
+    if (isUpdatingFromEffect.current) {
+      isUpdatingFromEffect.current = false
+      return
     }
-    if (originalText.endsWith(" ") && !suggestedText.endsWith(" ")) {
-      suggestedText = suggestedText + " "
-    }
-
-    const newContent =
-      contentRef.current.slice(0, highlight.start) +
-      suggestedText +
-      contentRef.current.slice(highlight.end)
 
     contentRef.current = newContent
-    setContent(newContent)
     setContentForWordCount(newContent)
-
-    if (deepHighlights.length > 0) {
-      setDeepHighlights([])
-    }
-
     setHasManuallyEdited(true)
 
-    setHistory(prevHistory => [...prevHistory, newContent])
-    setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+    if (newContent !== (history[currentHistoryIndex] || "")) {
+      const newHistory = history.slice(0, currentHistoryIndex + 1)
+      setHistory([...newHistory, newContent])
+      setCurrentHistoryIndex(newHistory.length)
+    }
 
-    const adjustment = suggestedText.length - (highlight.end - highlight.start)
-
-    const newDeepHighlights = deepHighlights
-      .filter(h => h.id !== highlight.id)
-      .map(h =>
-        h.start > highlight.end
-          ? {
-              ...h,
-              start: h.start + adjustment,
-              end: h.end + adjustment
-            }
-          : h
-      )
-    setDeepHighlights(newDeepHighlights)
-
-    const newRealTimeHighlights = realTimeHighlights
-      .filter(h => h.id !== highlight.id)
-      .map(h =>
-        h.start > highlight.end
-          ? {
-              ...h,
-              start: h.start + adjustment,
-              end: h.end + adjustment
-            }
-          : h
-      )
-    setRealTimeHighlights(newRealTimeHighlights)
-
-    setSelectedSuggestion(null)
+    throttledRealTimeCheck(newContent)
+    debouncedRealTimeCheck(newContent)
   }
 
-  const dismissSuggestion = (highlightId: string) => {
-    setDeepHighlights(prev => prev.filter(h => h.id !== highlightId))
-    setRealTimeHighlights(prev => prev.filter(h => h.id !== highlightId))
-    setSelectedSuggestion(null)
-  }
-
-  const getCursorPosition = (element: Node | null): number => {
-    if (!element) return 0
+  const handleSelectionChange = () => {
     const selection = window.getSelection()
-    if (selection && selection.rangeCount > 0) {
+    if (selection && selection.rangeCount > 0 && textareaRef.current) {
       const range = selection.getRangeAt(0)
       const preCaretRange = range.cloneRange()
-      preCaretRange.selectNodeContents(element)
+      preCaretRange.selectNodeContents(textareaRef.current)
       preCaretRange.setEnd(range.endContainer, range.endOffset)
-      return preCaretRange.toString().length
+      const newCursorPos = preCaretRange.toString().length
+      setCursorPosition(textareaRef.current, newCursorPos)
     }
-    return 0
   }
 
-  const setCursorPosition = (element: Node | null, position: number) => {
-    if (!element) return
-    const range = window.document.createRange()
-    const selection = window.getSelection()
-    let charIndex = 0
-    const nodeStack: Node[] = [element]
-    let node: Node | undefined
-
-    while ((node = nodeStack.pop())) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const nextCharIndex = charIndex + node.textContent!.length
-        if (position >= charIndex && position <= nextCharIndex) {
-          range.setStart(node, position - charIndex)
-          range.collapse(true)
-          if (selection) {
-            selection.removeAllRanges()
-            selection.addRange(range)
-          }
-          return
-        }
-        charIndex = nextCharIndex
-      } else if (node.childNodes && node.childNodes.length > 0) {
-        for (let i = node.childNodes.length - 1; i >= 0; i--) {
-          nodeStack.push(node.childNodes[i])
-        }
-      }
-    }
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const newContent = e.currentTarget.innerText
+    const cursorPosition = getCursorPosition(e.currentTarget)
+    handleContentChange(newContent)
+    setCursorPosition(e.currentTarget, cursorPosition)
   }
 
   const handleUndo = () => {
     throttledRealTimeCheck.cancel()
+    debouncedRealTimeCheck.cancel()
     if (currentHistoryIndex > 0) {
       const newIndex = currentHistoryIndex - 1
       setCurrentHistoryIndex(newIndex)
@@ -553,6 +641,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const handleRedo = () => {
     throttledRealTimeCheck.cancel()
+    debouncedRealTimeCheck.cancel()
     if (currentHistoryIndex < history.length - 1) {
       const newIndex = currentHistoryIndex + 1
       setCurrentHistoryIndex(newIndex)
@@ -694,11 +783,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     if (textareaRef.current && !textareaRef.current.innerHTML) {
       isUpdatingFromEffect.current = true
       textareaRef.current.innerHTML = renderHighlightedHTML()
-      queueMicrotask(() => {
-        isUpdatingFromEffect.current = false
-      })
     }
-  }, [])
+  }, [content, highlights])
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -863,38 +949,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           contentEditable
           suppressContentEditableWarning={true}
           onKeyDown={handleKeyDown}
-          onInput={e => {
-            if (isUpdatingFromEffect.current) {
-              return
-            }
-            const newContent = e.currentTarget.innerText || ""
-
-            contentRef.current = newContent
-            setContent(newContent)
-            setContentForWordCount(newContent)
-
-            if (deepHighlights.length > 0) {
-              setDeepHighlights([])
-            }
-
-            setHasManuallyEdited(true)
-
-            setHistory(prevHistory => [...prevHistory, newContent])
-            setCurrentHistoryIndex(prevIndex => prevIndex + 1)
-
-            throttledRealTimeCheck(newContent)
-          }}
-          onClick={e => {
-            const target = e.target as HTMLElement
-            if (target.dataset.suggestionId) {
-              e.preventDefault()
-              const suggestionId = target.dataset.suggestionId
-              const highlight = highlights.find(h => h.id === suggestionId)
-              if (highlight) {
-                setSelectedSuggestion(highlight.suggestion)
-              }
-            }
-          }}
+          onInput={handleInput}
+          onClick={handleSelectionChange}
           onBlur={() => {
             if (textareaRef.current) {
               const newContent = textareaRef.current.innerText || ""
@@ -1001,7 +1057,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => dismissSuggestion(selectedSuggestion.id)}
+                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
                   className="flex-1"
                 >
                   Dismiss

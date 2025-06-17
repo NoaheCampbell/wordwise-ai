@@ -41,9 +41,17 @@ function findTextSpan(
   return { start, end: start + searchText.length }
 }
 
-function generateStreamingGrammarPrompt(text: string): string {
+function generateStreamingGrammarPrompt(
+  text: string,
+  level: "spelling" | "full"
+): string {
+  const task =
+    level === "spelling"
+      ? "Your ONLY task is to identify spelling errors in the text below."
+      : "Your ONLY task is to identify grammar and spelling errors in the text below."
+
   return `
-You are a fast and efficient writing assistant. Your ONLY task is to identify grammar and spelling errors in the text below.
+You are a fast and efficient writing assistant. ${task}
 
 For each error you find, stream a single, complete JSON object on a new line. Do not wrap them in an array or a parent JSON object. Each JSON object must have this exact structure:
 {
@@ -57,8 +65,9 @@ Text to analyze:
 "${text}"
 
 IMPORTANT:
-- Respond EXTREMELY quickly.
-- Only identify definite errors. Do not suggest stylistic changes.
+- Prioritize ACCURACY. Only identify definite errors.
+- Do not suggest stylistic changes.
+- Do not flag errors in what might be incomplete sentences. Wait for a natural pause.
 - Each JSON object MUST be on its own line.
 - Do NOT return a list or an array. Stream one object at a time.
 - If no errors are found, return nothing.
@@ -67,7 +76,7 @@ IMPORTANT:
 
 export async function POST(req: NextRequest) {
   try {
-    const { text } = await req.json()
+    const { text, level = "full" } = await req.json()
 
     if (!process.env.OPENAI_API_KEY) {
       return new Response("OpenAI API key not configured", { status: 500 })
@@ -76,7 +85,7 @@ export async function POST(req: NextRequest) {
       return new Response("No text provided", { status: 400 })
     }
 
-    const prompt = generateStreamingGrammarPrompt(text)
+    const prompt = generateStreamingGrammarPrompt(text, level)
 
     const responseStream = await openai.chat.completions.create({
       model: "gpt-4o",
