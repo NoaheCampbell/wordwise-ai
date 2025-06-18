@@ -222,6 +222,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   // Track current selection for UI state
   const [hasSelection, setHasSelection] = useState(false)
+  const [preservedSelection, setPreservedSelection] = useState<{
+    start: number
+    end: number
+    text: string
+  } | null>(null)
 
   // Update selection state based on current selection
   const updateSelectionState = useCallback(() => {
@@ -235,6 +240,81 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setHasSelection(false)
     }
   }, [])
+
+  // Preserve current selection for dropdown interactions
+  const preserveSelection = useCallback(() => {
+    const selectionInfo = getSelectionRange()
+    if (selectionInfo) {
+      setPreservedSelection(selectionInfo)
+    }
+  }, [])
+
+  // Restore preserved selection
+  const restoreSelection = useCallback(() => {
+    if (preservedSelection && textareaRef.current) {
+      // Find the text at the preserved position to make sure it still matches
+      const currentText = contentRef.current.slice(
+        preservedSelection.start,
+        preservedSelection.end
+      )
+
+      if (currentText === preservedSelection.text) {
+        // Create a new selection at the preserved position
+        if (typeof window === "undefined" || !window.document) return
+
+        const range = window.document.createRange()
+        const selection = window.getSelection()
+
+        // Find the text nodes and set the range
+        let currentPos = 0
+        let startNode: Node | null = null
+        let endNode: Node | null = null
+        let startOffset = 0
+        let endOffset = 0
+
+        const findPositions = (node: Node): boolean => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const textLength = node.textContent?.length || 0
+            if (
+              currentPos + textLength >= preservedSelection.start &&
+              !startNode
+            ) {
+              startNode = node
+              startOffset = preservedSelection.start - currentPos
+            }
+            if (currentPos + textLength >= preservedSelection.end && !endNode) {
+              endNode = node
+              endOffset = preservedSelection.end - currentPos
+              return true
+            }
+            currentPos += textLength
+          } else {
+            for (let i = 0; i < node.childNodes.length; i++) {
+              if (findPositions(node.childNodes[i])) {
+                return true
+              }
+            }
+          }
+          return false
+        }
+
+        findPositions(textareaRef.current)
+
+        if (startNode && endNode && selection) {
+          try {
+            range.setStart(startNode, startOffset)
+            range.setEnd(endNode, endOffset)
+            selection.removeAllRanges()
+            selection.addRange(range)
+            setHasSelection(true)
+          } catch (error) {
+            console.warn("Could not restore selection:", error)
+          }
+        }
+      }
+      setPreservedSelection(null)
+    }
+  }, [preservedSelection])
 
   const getCursorPosition = (element: Node | null): number => {
     if (!element) return 0
@@ -1953,7 +2033,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           ) : (
             <>
               {/* Quick Tone Adjustments */}
-              <DropdownMenu>
+              <DropdownMenu
+                onOpenChange={open => {
+                  if (open) {
+                    preserveSelection()
+                  } else {
+                    // Small delay to restore selection after dropdown closes
+                    setTimeout(restoreSelection, 10)
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
@@ -2006,7 +2095,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               </DropdownMenu>
 
               {/* Advanced AI Enhancements */}
-              <DropdownMenu>
+              <DropdownMenu
+                onOpenChange={open => {
+                  if (open) {
+                    preserveSelection()
+                  } else {
+                    // Small delay to restore selection after dropdown closes
+                    setTimeout(restoreSelection, 10)
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
@@ -2023,78 +2121,121 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <ChevronDown className="size-3" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56">
+                <DropdownMenuContent className="w-64">
                   <div className="border-b p-2 text-xs text-gray-600">
-                    💡 Works best when you select the specific part to enhance
+                    💡 Select the text you want to improve, then choose an
+                    option below
                   </div>
-                  <DropdownMenuLabel>📧 Subject Lines</DropdownMenuLabel>
+
+                  <DropdownMenuLabel>📧 Email Subject Lines</DropdownMenuLabel>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleSubjectLineImprovement("improve")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    ✨ Improve for Open Rates
+                    <span className="font-medium">✨ Make More Compelling</span>
+                    <span className="text-xs text-gray-500">
+                      Rewrite to get more opens
+                    </span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleSubjectLineImprovement("ab_test")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    🔬 Generate A/B Variations
+                    <span className="font-medium">
+                      🔬 Create 3 Test Versions
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Different styles for A/B testing
+                    </span>
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>🔥 Call-to-Actions</DropdownMenuLabel>
+                  <DropdownMenuLabel>🔥 Button Text & CTAs</DropdownMenuLabel>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleCTAImprovement("improve")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    ⚡ Boost Conversions
+                    <span className="font-medium">⚡ Make More Clickable</span>
+                    <span className="text-xs text-gray-500">
+                      Improve button text for more clicks
+                    </span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleCTAImprovement("variations")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    🔄 5 CTA Variations
+                    <span className="font-medium">🔄 Give Me 5 Options</span>
+                    <span className="text-xs text-gray-500">
+                      Different button text variations
+                    </span>
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>✍️ Content Quality</DropdownMenuLabel>
+                  <DropdownMenuLabel>✍️ Regular Content</DropdownMenuLabel>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleBodyContentImprovement("improve_engagement")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    🎭 Improve Engagement
+                    <span className="font-medium">
+                      🎭 Make More Interesting
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      Add hooks and engagement
+                    </span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleBodyContentImprovement("shorten")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    ✂️ Make Concise
+                    <span className="font-medium">✂️ Make Shorter</span>
+                    <span className="text-xs text-gray-500">
+                      Remove fluff, keep key points
+                    </span>
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={e => {
                       e.preventDefault()
                       handleBodyContentImprovement("structure")
                     }}
+                    className="flex h-auto flex-col items-start gap-1 py-2"
                   >
-                    🏗️ Better Structure
+                    <span className="font-medium">🏗️ Reorganize Flow</span>
+                    <span className="text-xs text-gray-500">
+                      Better structure and transitions
+                    </span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
 
               {/* Content Extension */}
-              <DropdownMenu>
+              <DropdownMenu
+                onOpenChange={open => {
+                  if (open) {
+                    preserveSelection()
+                  } else {
+                    // Small delay to restore selection after dropdown closes
+                    setTimeout(restoreSelection, 10)
+                  }
+                }}
+              >
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
