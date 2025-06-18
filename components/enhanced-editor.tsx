@@ -84,6 +84,8 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { SimpleResearchPanel } from "@/components/simple-research-panel"
+import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
 
 interface EnhancedEditorProps {
   initialDocument?: SelectDocument
@@ -214,6 +216,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const lastAnalyzedText = useRef({ spelling: "", full: "" })
   const lastCursorPosition = useRef(0)
   const lastContentLength = useRef(0)
+
+  // Research & Ideas state
+  const [isResearchPanelOpen, setIsResearchPanelOpen] = useState(false)
+  const [isSocialSnippetOpen, setIsSocialSnippetOpen] = useState(false)
 
   const highlights = useMemo(
     () => [...deepHighlights, ...realTimeHighlights],
@@ -641,7 +647,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       toast.error("You must be logged in to save a document.")
       return
     }
-    if (!contentRef.current.trim() && !title.trim()) {
+
+    // Check if there's actual content to save
+    const hasContent =
+      contentRef.current.trim() ||
+      (title.trim() && title !== "Untitled Document")
+    if (!hasContent) {
       toast.error("Cannot save an empty document.")
       return
     }
@@ -664,7 +675,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         toast.error("Failed to update document")
       }
     } else {
-      // Create new document
+      // Create new document only if we have content
       const result = await createDocumentAction({
         title: title || "Untitled Document",
         content: contentRef.current
@@ -687,13 +698,53 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     setIsDeleting(true)
     const result = await deleteDocumentAction(document.id, user.id)
-    setIsDeleting(false)
 
     if (result.isSuccess) {
       toast.success("Document deleted successfully")
-      reloadDocuments()
-      router.push("/")
+
+      // Reset ALL component state completely
+      setDocument(null)
+      setTitle("Untitled Document")
+      setContent("")
+      contentRef.current = ""
+      setContentForWordCount("")
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+      setHistory([])
+      setCurrentHistoryIndex(-1)
+      setHasManuallyEdited(true)
+      setIsResearchPanelOpen(false)
+      setIsSocialSnippetOpen(false)
+      setHasSelection(false)
+      setPreservedSelection(null)
+
+      // Reset all loading/analysis states
+      setIsAnalyzing(false)
+      setIsCheckingRealTime(false)
+      setIsSaving(false)
+      setIsRewriting(false)
+      setIsDeleting(false)
+
+      // Reset suggestion states
+      setSelectedSuggestion(null)
+      setShowDeleteAlert(false)
+
+      // Clear any text selection
+      if (window.getSelection) {
+        window.getSelection()?.removeAllRanges()
+      }
+
+      // Clear any DOM event listeners and intervals
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = ""
+        textareaRef.current.blur()
+      }
+
+      // Force a clean navigation to avoid component state conflicts
+      window.location.href = "/"
     } else {
+      setIsDeleting(false)
       toast.error(result.message)
     }
   }
@@ -727,22 +778,103 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return { start, end, text: selectedText }
   }
 
-  const handleRewrite = async (tone: string) => {
-    if (!contentRef.current.trim()) {
-      toast.info("There is no text to rewrite.")
-      return
+  // Enhanced sentence boundary validation for rewrites
+  const validateTextForRewrite = (
+    text: string
+  ): { isValid: boolean; message?: string } => {
+    if (!text.trim()) {
+      return { isValid: false, message: "Please select text to rewrite." }
     }
 
-    const selectionInfo = getSelectionRange()
-    if (!selectionInfo) {
-      toast.info("Please select the text segment you want to rewrite.")
-      return
+    if (text.length < 5) {
+      return {
+        isValid: false,
+        message: "Selected text is too short for a meaningful rewrite."
+      }
     }
 
-    const { start, end, text: selectedText } = selectionInfo
+    // Check if text ends with proper sentence punctuation or is a complete phrase
+    const sentenceEnders = /[.!?:;]$/
+    const isCompleteSentence = sentenceEnders.test(text.trim())
+
+    // Check if it's a fragment (starts mid-sentence)
+    const startsWithLowercase = /^[a-z]/.test(text.trim())
+    const hasConjunctions =
+      /^(and|but|or|so|yet|for|nor|because|since|although|though|while|if|unless|until|when|where|after|before)\s/i.test(
+        text.trim()
+      )
+
+    if (startsWithLowercase && hasConjunctions) {
+      return {
+        isValid: false,
+        message:
+          "Please select complete sentences for rewriting, not sentence fragments."
+      }
+    }
+
+    // Check for broken sentences (missing beginning or end)
+    if (!isCompleteSentence && text.length > 20) {
+      const words = text.trim().split(/\s+/)
+      if (words.length > 5 && !sentenceEnders.test(text.trim())) {
+        return {
+          isValid: false,
+          message:
+            "Selection appears to be incomplete. Please select full sentences ending with punctuation."
+        }
+      }
+    }
+
+    return { isValid: true }
+  }
+
+  // Enhanced rewrite function with sentence boundary validation
+  const handleRewriteWithValidation = async (
+    tone: string,
+    originalText?: string
+  ) => {
+    let textToRewrite: string
+    let start: number
+    let end: number
+
+    if (originalText) {
+      // Rewriting from a suggestion - find the text in the content
+      const index = contentRef.current.indexOf(originalText)
+      if (index === -1) {
+        toast.error(
+          "Could not find the text to rewrite. Please try selecting it manually."
+        )
+        return
+      }
+      textToRewrite = originalText
+      start = index
+      end = index + originalText.length
+    } else {
+      // Rewriting from user selection
+      if (!contentRef.current.trim()) {
+        toast.info("There is no text to rewrite.")
+        return
+      }
+
+      const selectionInfo = getSelectionRange()
+      if (!selectionInfo) {
+        toast.info("Please select the text segment you want to rewrite.")
+        return
+      }
+
+      textToRewrite = selectionInfo.text
+      start = selectionInfo.start
+      end = selectionInfo.end
+    }
+
+    // Validate the text for rewriting
+    const validation = validateTextForRewrite(textToRewrite)
+    if (!validation.isValid) {
+      toast.error(validation.message || "Invalid text selection for rewriting.")
+      return
+    }
 
     setIsRewriting(true)
-    const result = await rewriteWithToneAction(selectedText, tone)
+    const result = await rewriteWithToneAction(textToRewrite, tone)
     setIsRewriting(false)
 
     if (result.isSuccess) {
@@ -766,10 +898,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setRealTimeHighlights([])
       setSuggestions([])
 
-      toast.success(`Selected text rewritten in a ${tone.toLowerCase()} tone.`)
+      toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
     } else {
       toast.error(result.message)
     }
+  }
+
+  const handleRewrite = async (tone: string) => {
+    await handleRewriteWithValidation(tone)
   }
 
   // New AI Enhancement Functions
@@ -2019,6 +2155,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             />
             {isAnalyzing ? "Analyzing..." : "Analyze"}
           </Button>
+
+          {/* Research Panel */}
+          <SimpleResearchPanel
+            documentId={document?.id}
+            currentContent={content}
+            isOpen={isResearchPanelOpen}
+            onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+          />
         </div>
 
         <Separator orientation="vertical" className="h-6" />
@@ -2060,35 +2204,43 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  <DropdownMenuLabel>Basic Tones</DropdownMenuLabel>
+                  <DropdownMenuLabel>
+                    ✨ Phase 2 Tone Collection
+                  </DropdownMenuLabel>
                   {[
-                    "Professional",
-                    "Casual",
-                    "Friendly",
-                    "Persuasive",
-                    "Direct"
-                  ].map(t => (
+                    { tone: "Bold", emoji: "💪" },
+                    { tone: "Witty", emoji: "😄" },
+                    { tone: "Motivational", emoji: "🚀" },
+                    { tone: "Direct", emoji: "🎯" },
+                    { tone: "Professional", emoji: "👔" },
+                    { tone: "Friendly", emoji: "🤝" }
+                  ].map(({ tone, emoji }) => (
                     <DropdownMenuItem
-                      key={t}
+                      key={tone}
                       onSelect={e => {
                         e.preventDefault()
-                        handleRewrite(t)
+                        handleRewrite(tone)
                       }}
                     >
-                      {t}
+                      {emoji} {tone}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Specialized</DropdownMenuLabel>
-                  {CLARITY_TONES.slice(0, 3).map(t => (
+                  <DropdownMenuLabel>Classic Tones</DropdownMenuLabel>
+                  {[
+                    { tone: "Casual", emoji: "😊" },
+                    { tone: "Persuasive", emoji: "🎭" },
+                    { tone: "Clear", emoji: "💎" },
+                    { tone: "Simple", emoji: "🔍" }
+                  ].map(({ tone, emoji }) => (
                     <DropdownMenuItem
-                      key={t}
+                      key={tone}
                       onSelect={e => {
                         e.preventDefault()
-                        handleRewrite(t)
+                        handleRewrite(tone)
                       }}
                     >
-                      {t}
+                      {emoji} {tone}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -2279,6 +2431,29 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              {/* Social Snippet Generator */}
+              {hasSelection && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    preserveSelection()
+                    setIsSocialSnippetOpen(true)
+                  }}
+                  className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+                  title="Create social media posts from selected text"
+                >
+                  📱 Create Social Post
+                </Button>
+              )}
+
+              <SocialSnippetGenerator
+                selectedText={preservedSelection?.text || ""}
+                documentId={document?.id}
+                isOpen={isSocialSnippetOpen}
+                onOpenChange={setIsSocialSnippetOpen}
+              />
             </>
           )}
         </div>
@@ -2418,26 +2593,127 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 </div>
               </div>
 
-              <div className="mt-6 flex gap-2">
-                <Button
-                  onClick={() => {
-                    const highlight = highlights.find(
-                      h => h.suggestion.id === selectedSuggestion.id
-                    )
-                    if (highlight) applySuggestion(highlight)
-                  }}
-                  className="flex-1"
-                >
-                  <Check className="mr-2 size-4" />
-                  Apply
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
-                  className="flex-1"
-                >
-                  Dismiss
-                </Button>
+              <div className="mt-6 space-y-3">
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      const highlight = highlights.find(
+                        h => h.suggestion.id === selectedSuggestion.id
+                      )
+                      if (highlight) applySuggestion(highlight)
+                    }}
+                    className="flex-1"
+                  >
+                    <Check className="mr-2 size-4" />
+                    Apply
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => dismissSuggestionById(selectedSuggestion.id)}
+                    className="flex-1"
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+
+                {/* Rewrite Options for Inline AI Flags */}
+                <div className="border-t pt-3">
+                  <p className="mb-2 text-xs font-medium text-gray-600">
+                    Or rewrite this text with different tones:
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "professional",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      👔 Professional
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "friendly",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      🤝 Friendly
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "persuasive",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      💪 Persuasive
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "casual",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      😊 Casual
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "direct",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      🎯 Direct
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isRewriting}
+                      onClick={() =>
+                        handleRewriteWithValidation(
+                          "witty",
+                          selectedSuggestion.originalText
+                        )
+                      }
+                      className="text-xs"
+                    >
+                      😄 Witty
+                    </Button>
+                  </div>
+                  {isRewriting && (
+                    <div className="mt-2 text-center text-xs text-blue-600">
+                      <Sparkles className="mr-1 inline size-3 animate-spin" />
+                      Rewriting...
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="mt-4 text-center">

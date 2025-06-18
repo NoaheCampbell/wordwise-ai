@@ -92,11 +92,11 @@ function validateInput(text: string): { isValid: boolean; message?: string } {
 }
 
 /**
- * Enforce sentence boundaries for text operations
+ * Enforce sentence boundaries for text operations - Enhanced for Phase 2
  */
 function enforceSentenceBoundary(originalText: string, selectedText: string): string {
   // If selected text doesn't end with sentence punctuation, extend to include it
-  const sentenceEnders = /[.!?]/
+  const sentenceEnders = /[.!?:;]/
   if (!sentenceEnders.test(selectedText.trim())) {
     const startIndex = originalText.indexOf(selectedText)
     if (startIndex !== -1) {
@@ -108,6 +108,44 @@ function enforceSentenceBoundary(originalText: string, selectedText: string): st
     }
   }
   return selectedText
+}
+
+/**
+ * Validate text for rewrite operations - Phase 2 feature
+ */
+function validateRewriteText(text: string): { isValid: boolean; message?: string } {
+  if (!text.trim()) {
+    return { isValid: false, message: "Text cannot be empty." }
+  }
+
+  if (text.length < 5) {
+    return { isValid: false, message: "Text too short for meaningful rewrite." }
+  }
+
+  // Check for broken sentences or fragments
+  const sentenceEnders = /[.!?:;]$/
+  const startsWithLowercase = /^[a-z]/.test(text.trim())
+  const hasConjunctions = /^(and|but|or|so|yet|for|nor|because|since|although|though|while|if|unless|until|when|where|after|before)\s/i.test(text.trim())
+  
+  if (startsWithLowercase && hasConjunctions) {
+    return { 
+      isValid: false, 
+      message: "Cannot rewrite sentence fragments. Please select complete sentences." 
+    }
+  }
+
+  // Check for incomplete sentences over 20 characters
+  if (!sentenceEnders.test(text.trim()) && text.length > 20) {
+    const words = text.trim().split(/\s+/)
+    if (words.length > 5) {
+      return { 
+        isValid: false, 
+        message: "Selection appears incomplete. Please select full sentences with proper punctuation." 
+      }
+    }
+  }
+
+  return { isValid: true }
 }
 
 /**
@@ -671,6 +709,12 @@ export async function enhancedRewriteWithToneAction(
     return { isSuccess: false, message: validation.message! }
   }
 
+  // Phase 2: Enhanced validation for rewrite operations
+  const rewriteValidation = validateRewriteText(text)
+  if (!rewriteValidation.isValid) {
+    return { isSuccess: false, message: rewriteValidation.message! }
+  }
+
   // Enforce sentence boundaries if requested
   let processedText = text
   if (enforceBoundaries) {
@@ -784,6 +828,12 @@ export async function rewriteWithToneAction(
   const validation = validateInput(text)
   if (!validation.isValid) {
     return { isSuccess: false, message: validation.message! }
+  }
+
+  // Phase 2: Enhanced validation for rewrite operations
+  const rewriteValidation = validateRewriteText(text)
+  if (!rewriteValidation.isValid) {
+    return { isSuccess: false, message: rewriteValidation.message! }
   }
 
   try {
