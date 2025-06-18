@@ -289,7 +289,115 @@ Please provide at least 5 high-quality sources. The summary should be concise an
 // ============================================================================
 
 /**
- * Search user's past documents for relevant content
+ * Enhanced Past-Issue Analyzer with content analysis
+ */
+export async function analyzePastDocumentsAction(
+  userId: string,
+  currentContent: string,
+  limit: number = 10
+): Promise<ActionState<Array<{ 
+  id: string; 
+  title: string; 
+  content: string; 
+  tags: string[];
+  campaignType: string | null;
+  mainTopics: string[];
+  themes: string[];
+  contentType: string;
+  createdAt: Date;
+  similarity?: number;
+}>>> {
+  try {
+    if (!checkResearchRateLimit(userId)) {
+      return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
+    }
+
+    // Get user's past documents with full content
+    const pastDocuments = await db.query.documents.findMany({
+      where: eq(documentsTable.userId, userId),
+      orderBy: (documents, { desc }) => [desc(documents.updatedAt)],
+      limit: limit
+    })
+
+    if (pastDocuments.length === 0) {
+      return {
+        isSuccess: true,
+        message: "No past documents found",
+        data: []
+      }
+    }
+
+    // Use GPT to analyze and extract main topics from each document
+    const documentsWithTopics = await Promise.all(
+      pastDocuments.map(async (doc) => {
+        try {
+          const analysisPrompt = `
+Analyze this newsletter content and extract:
+1. Main topics (3-5 key topics as short phrases)
+2. Content themes and angles covered
+
+Return JSON with this structure:
+{
+  "mainTopics": ["topic1", "topic2", "topic3"],
+  "themes": ["theme1", "theme2"],
+  "contentType": "newsletter" | "blog" | "guide" | "announcement"
+}
+
+Content (first 1000 chars):
+"${doc.content.slice(0, 1000)}"
+`
+          
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // Use mini for analysis to save costs
+            messages: [{ role: "user", content: analysisPrompt }],
+            temperature: 0.2,
+            max_tokens: 200,
+            response_format: { type: "json_object" }
+          })
+
+          const analysis = JSON.parse(response.choices[0]?.message?.content || '{"mainTopics": [], "themes": []}')
+          
+          return {
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            tags: doc.tags || [],
+            campaignType: doc.campaignType,
+            mainTopics: analysis.mainTopics || [],
+            themes: analysis.themes || [],
+            contentType: analysis.contentType || "newsletter",
+            createdAt: doc.createdAt
+          }
+        } catch (error) {
+          console.error(`Error analyzing document ${doc.id}:`, error)
+          return {
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            tags: doc.tags || [],
+            campaignType: doc.campaignType,
+            mainTopics: [],
+            themes: [],
+            contentType: "newsletter",
+            createdAt: doc.createdAt
+          }
+        }
+      })
+    )
+
+    return {
+      isSuccess: true,
+      message: `Analyzed ${documentsWithTopics.length} past documents`,
+      data: documentsWithTopics
+    }
+  } catch (error) {
+    console.error("Error analyzing past documents:", error)
+    return { isSuccess: false, message: "Failed to analyze past documents" }
+  }
+}
+
+/**
+ * Search user's past documents for relevant content based on a query
  */
 export async function searchPastDocumentsAction(
   query: string,
@@ -377,10 +485,11 @@ interface GeneratedIdea {
   outline: string
   type: "headline" | "outline" | "topic_suggestion"
   confidence: number
+  reasoning?: string
 }
 
 /**
- * Generate content ideas based on current document and past coverage
+ * Enhanced idea generation with better past context analysis
  */
 export async function generateIdeasAction(
   currentContent: string,
@@ -397,15 +506,42 @@ export async function generateIdeasAction(
       return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
     }
 
-    // Get user's past documents for context
-    const pastDocuments = await db.query.documents.findMany({
-      where: eq(documentsTable.userId, userId),
-      orderBy: (documents, { desc }) => [desc(documents.updatedAt)]
+    // Get enhanced analysis of past documents
+    const pastAnalysis = await analyzePastDocumentsAction(userId, currentContent, 15)
+    
+    if (!pastAnalysis.isSuccess) {
+      return { isSuccess: false, message: pastAnalysis.message }
+    }
+
+    const pastDocs = pastAnalysis.data
+
+    // Create comprehensive context about past coverage
+    const pastTopicsMap = new Map<string, number>()
+    const pastThemes = new Set<string>()
+    const campaignTypes = new Set<string>()
+    
+    pastDocs.forEach(doc => {
+      doc.mainTopics.forEach(topic => {
+        pastTopicsMap.set(topic.toLowerCase(), (pastTopicsMap.get(topic.toLowerCase()) || 0) + 1)
+      })
+      if (doc.themes) {
+        doc.themes.forEach(theme => pastThemes.add(theme))
+      }
+      if (doc.campaignType) {
+        campaignTypes.add(doc.campaignType)
+      }
     })
 
-    const pastTopics = pastDocuments
-      .map(doc => doc.title)
+    // Find most covered topics
+    const topCoveredTopics = Array.from(pastTopicsMap.entries())
+      .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
+      .map(([topic, count]) => `${topic} (covered ${count} times)`)
+
+    // Recent document titles for context
+    const recentTitles = pastDocs
+      .slice(0, 5)
+      .map(doc => doc.title)
       .join(", ")
 
     let prompt = ""
@@ -415,70 +551,91 @@ export async function generateIdeasAction(
       case "headlines":
         responseType = "headline"
         prompt = `
-You are a content strategist. Based on the current content and past topics, generate 3 compelling headline ideas for future content.
+You are an expert newsletter strategist. Generate 3 compelling headline ideas for future newsletter issues.
 
-Current Content:
-"${currentContent.slice(0, 1000)}"
+CURRENT CONTENT ANALYSIS:
+"${currentContent.slice(0, 1200)}"
 
-Past Topics: ${pastTopics}
+PAST COVERAGE CONTEXT:
+- Recent newsletter titles: ${recentTitles}
+- Most covered topics: ${topCoveredTopics.join(", ")}
+- Content themes used: ${Array.from(pastThemes).join(", ")}
+- Campaign types: ${Array.from(campaignTypes).join(", ")}
 
-Generate 3 headline ideas that:
-1. Build on themes from current content
-2. Avoid duplicating past topics
-3. Are engaging and specific
+REQUIREMENTS:
+1. Build on themes from current content but explore new angles
+2. Avoid over-saturated topics (those covered 3+ times)
+3. Be specific, actionable, and intriguing
+4. Match the tone and style of past successful content
+5. Consider seasonal relevance and audience interest
 
 Return JSON with "ideas" array. Each idea should have:
-- title: the headline
-- outline: 2-3 sentence description
-- confidence: relevance score (0-100)
+- title: compelling headline that follows proven newsletter patterns
+- outline: 3-4 sentence explanation of what the issue would cover and why it matters
+- confidence: relevance score (0-100) based on past success patterns
+- reasoning: brief explanation of why this builds on current content and fills a gap
 
-Ideas:`
+Generate headlines that would make subscribers excited to open the email.`
         break
 
       case "topics":
         responseType = "topic_suggestion"
         prompt = `
-You are a content strategist. Based on current content and past coverage, suggest 3 new topic areas to explore.
+You are an expert content strategist. Based on current content and comprehensive past coverage analysis, suggest 3 new topic areas to explore.
 
-Current Content:
-"${currentContent.slice(0, 1000)}"
+CURRENT CONTENT ANALYSIS:
+"${currentContent.slice(0, 1200)}"
 
-Past Topics: ${pastTopics}
+PAST COVERAGE ANALYSIS:
+- Most covered topics: ${topCoveredTopics.join(", ")}
+- Underexplored themes: ${Array.from(pastThemes).slice(0, 5).join(", ")}
+- Content patterns: ${Array.from(campaignTypes).join(", ")}
+- Total past issues analyzed: ${pastDocs.length}
 
-Generate 3 topic suggestions that:
-1. Complement current content themes
-2. Explore new angles not covered before
-3. Would interest the same audience
+STRATEGIC REQUIREMENTS:
+1. Identify content gaps in past coverage
+2. Suggest topics that complement but don't duplicate past work
+3. Consider audience progression and learning journey
+4. Balance evergreen vs timely content opportunities
+5. Suggest topics that could become series or ongoing themes
 
 Return JSON with "ideas" array. Each idea should have:
-- title: topic name
-- outline: why this topic matters and what to cover
-- confidence: relevance score (0-100)
+- title: specific topic area with clear focus
+- outline: detailed explanation of why this topic matters, what to cover, and how it fits the content strategy
+- confidence: strategic fit score (0-100)
+- reasoning: analysis of the content gap this fills and audience benefit
 
-Topics:`
+Focus on topics that would genuinely add value to the existing content library.`
         break
 
       case "outlines":
         responseType = "outline"
         prompt = `
-You are a content strategist. Create 3 detailed content outlines based on the current content style and themes.
+You are an expert newsletter writer. Create 3 detailed content outlines that match the current style and strategically expand the content library.
 
-Current Content:
-"${currentContent.slice(0, 1000)}"
+CURRENT CONTENT STYLE ANALYSIS:
+"${currentContent.slice(0, 1200)}"
 
-Past Topics: ${pastTopics}
+STRATEGIC CONTEXT:
+- Proven successful topics: ${topCoveredTopics.slice(0, 5).join(", ")}
+- Writing style patterns from ${pastDocs.length} past issues analyzed
+- Content themes that resonate: ${Array.from(pastThemes).slice(0, 5).join(", ")}
+- Recent successful titles: ${recentTitles}
 
-Generate 3 content outlines that:
-1. Match the tone and style of current content
-2. Expand on related themes
-3. Are actionable and structured
+OUTLINE REQUIREMENTS:
+1. Match the established tone, structure, and style
+2. Build on proven successful topics with new angles
+3. Include actionable takeaways and practical value
+4. Consider the audience's knowledge level and interests
+5. Structure for optimal engagement and sharing
 
 Return JSON with "ideas" array. Each idea should have:
-- title: content title
-- outline: detailed 3-4 point structure
-- confidence: relevance score (0-100)
+- title: specific, compelling newsletter title
+- outline: detailed 5-7 point structure with section headers, key points, and calls-to-action
+- confidence: execution feasibility score (0-100)
+- reasoning: why this outline fits the brand and fills a strategic need
 
-Outlines:`
+Create outlines that could be immediately executed and would perform well based on past success patterns.`
         break
     }
 
@@ -486,7 +643,7 @@ Outlines:`
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 1000,
+      max_tokens: 1500,
       response_format: { type: "json_object" }
     })
 
@@ -495,12 +652,13 @@ Outlines:`
       title: idea.title,
       outline: idea.outline,
       type: responseType as any,
-      confidence: idea.confidence || 80
+      confidence: idea.confidence || 80,
+      reasoning: idea.reasoning || ""
     }))
 
     return {
       isSuccess: true,
-      message: "Ideas generated successfully",
+      message: `Generated ${ideas.length} ${ideaType} ideas based on analysis of ${pastDocs.length} past documents`,
       data: ideas
     }
   } catch (error) {

@@ -27,7 +27,8 @@ import {
   BookOpen,
   Trash2,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Brain
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
@@ -38,6 +39,7 @@ import {
   generateIdeasAction,
   saveIdeaAction
 } from "@/actions/research-ideation-actions"
+
 import {
   getIdeasAction,
   getResearchSourcesAction,
@@ -433,6 +435,7 @@ export function ResearchPanel({
                     </Card>
                   </div>
                 )}
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-sm">Generate Ideas</CardTitle>
@@ -474,8 +477,20 @@ export function ResearchPanel({
                         <p className="text-muted-foreground my-1 text-sm">
                           {idea.outline}
                         </p>
+                        {idea.reasoning && (
+                          <div className="my-2 rounded-md bg-blue-50 p-2 dark:bg-blue-950">
+                            <p className="text-xs text-blue-700 dark:text-blue-300">
+                              <strong>Why this works:</strong> {idea.reasoning}
+                            </p>
+                          </div>
+                        )}
                         <div className="mt-2 flex items-center justify-between">
-                          <Badge variant="secondary">{idea.type}</Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary">{idea.type}</Badge>
+                            <Badge variant="outline" className="text-xs">
+                              {idea.confidence}% confidence
+                            </Badge>
+                          </div>
                           <Button
                             size="sm"
                             variant="outline"

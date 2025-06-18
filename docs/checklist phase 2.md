@@ -121,14 +121,14 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 - [ ] Mobile-friendly layout, resizable width  
 
 ### 5B.5  **Social Snippet Generator** 
-- [ ] **Select excerpt → “Create Social Post”** action in toolbar  
-- [ ] GPT prompt variants for:  
-  - [ ] Tweet (≤280 chars, 1–2 hashtags)  
-  - [ ] LinkedIn (conv-style, call-to-comment)  
-  - [ ] Instagram caption (≤2200 chars, emoji + 3–5 hashtags)  
-- [ ] Option to regenerate / cycle through 3 variations  
-- [ ] “Copy to clipboard” + toast confirmation  
-- [ ] Log snippet generation event (`idea_type = 'social'`) in `ideas` table  
+- [x] **Select excerpt → “Create Social Post”** action in toolbar  
+- [x] GPT prompt variants for:  
+  - [x] Tweet (≤280 chars, 1–2 hashtags)  
+  - [x] LinkedIn (conv-style, call-to-comment)  
+  - [x] Instagram caption (≤2200 chars, emoji + 3–5 hashtags)  
+- [x] Option to regenerate / cycle through 3 variations  
+- [x] “Copy to clipboard” + toast confirmation  
+- [x] Log snippet generation event (`idea_type = 'social'`) in `ideas` table  
 
 *(Effort: ≈0.5 dev-day—reuses existing GPT handler & idea panel UI)*
 

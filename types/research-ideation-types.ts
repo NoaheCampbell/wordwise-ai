@@ -58,6 +58,7 @@ export interface GeneratedIdea {
   outline: string
   type: "headline" | "outline" | "topic_suggestion"
   confidence: number
+  reasoning?: string
 }
 
 export interface SocialVariation {
@@ -75,11 +76,46 @@ export interface PastDocumentResult {
   relevance: string
 }
 
+// Enhanced types for the improved idea generation system
+export interface EnhancedPastDocument {
+  id: string
+  title: string
+  content: string
+  tags: string[]
+  campaignType: string | null
+  mainTopics: string[]
+  themes: string[]
+  contentType: string
+  createdAt: Date
+  similarity?: number
+}
+
+export interface ContentAnalysis {
+  summary: string
+  mainPoints: string[]
+  keywords: string[]
+  themes: string[]
+  contentType: string
+  topicCoverage: Map<string, number>
+}
+
+export interface IdeaGenerationContext {
+  currentContent: string
+  pastDocuments: EnhancedPastDocument[]
+  topCoveredTopics: Array<{ topic: string; count: number }>
+  recentTitles: string[]
+  availableThemes: string[]
+  campaignTypes: string[]
+}
+
 export interface IdeaStats {
   totalIdeas: number
   totalSources: number
   totalSocialSnippets: number
   recentIdeas: number
+  topTopics: Array<{ topic: string; count: number }>
+  contentGaps: string[]
+  suggestedFocusAreas: string[]
 }
 
 export interface ResearchPanelProps {
@@ -87,4 +123,15 @@ export interface ResearchPanelProps {
   currentContent?: string
   isOpen?: boolean
   onToggle?: () => void
+}
+
+// Enhanced idea generation options
+export interface IdeaGenerationOptions {
+  type: "headlines" | "topics" | "outlines"
+  count: number
+  includeReasoning: boolean
+  avoidRecentTopics: boolean
+  focusAreas?: string[]
+  targetAudience?: string
+  contentStyle?: "professional" | "casual" | "technical" | "creative"
 }

@@ -1,13 +1,17 @@
 "use client"
 
+import { useState } from "react"
 import { SuggestionCard } from "@/components/suggestion-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Sparkles, RefreshCw } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
+import { Sparkles, RefreshCw, Lightbulb, Brain } from "lucide-react"
 import { useDocument } from "./utilities/document-provider"
+import { EnhancedIdeaGenerator } from "@/components/enhanced-idea-generator"
 
 export function AISuggestionsPanel() {
   const { suggestions, isAnalyzing } = useDocument()
+  const [isIdeaGeneratorOpen, setIsIdeaGeneratorOpen] = useState(false)
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -45,6 +49,30 @@ export function AISuggestionsPanel() {
         </div>
       </div>
 
+      {/* AI Content Creation */}
+      <div className="border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50 p-4">
+        <Card className="border-purple-200 bg-white">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Brain className="size-5 text-purple-600" />
+              <h3 className="font-semibold text-gray-900">AI Content Ideas</h3>
+            </div>
+            <p className="mb-3 text-sm text-gray-600">
+              Get strategic newsletter ideas based on your past content and
+              current writing
+            </p>
+            <Button
+              onClick={() => setIsIdeaGeneratorOpen(true)}
+              className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+              size="sm"
+            >
+              <Lightbulb className="mr-2 size-4" />
+              Generate Ideas
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Suggestions List */}
       <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50 p-4">
         {isAnalyzing ? (
@@ -70,6 +98,12 @@ export function AISuggestionsPanel() {
           Suggestions powered by WordWise AI
         </div>
       </div>
+
+      <EnhancedIdeaGenerator
+        currentContent=""
+        isOpen={isIdeaGeneratorOpen}
+        onClose={() => setIsIdeaGeneratorOpen(false)}
+      />
     </div>
   )
 }

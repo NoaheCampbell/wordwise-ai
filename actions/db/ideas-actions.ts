@@ -392,6 +392,9 @@ export async function getIdeaStatsAction(): Promise<ActionState<{
   totalSources: number
   totalSocialSnippets: number
   recentIdeas: number
+  topTopics: Array<{ topic: string; count: number }>
+  contentGaps: string[]
+  suggestedFocusAreas: string[]
 }>> {
   try {
     const { userId } = await auth()
@@ -431,11 +434,49 @@ export async function getIdeaStatsAction(): Promise<ActionState<{
         sql`${ideasTable.createdAt} >= ${sevenDaysAgo.toISOString()}`
       ))
 
+    // Get all ideas to analyze topics
+    const allIdeas = await db.query.ideas.findMany({
+      where: and(
+        eq(ideasTable.userId, userId),
+        eq(ideasTable.isArchived, "false")
+      )
+    })
+
+    // Simple topic analysis from tags and titles
+    const topicMap = new Map<string, number>()
+    allIdeas.forEach(idea => {
+      // Extract topics from tags
+      if (idea.tags) {
+        idea.tags.forEach(tag => {
+          const topic = tag.toLowerCase()
+          topicMap.set(topic, (topicMap.get(topic) || 0) + 1)
+        })
+      }
+      
+      // Extract simple keywords from titles
+      const titleWords = idea.title.toLowerCase().split(' ')
+        .filter(word => word.length > 3)
+        .slice(0, 3) // Take first 3 meaningful words
+      
+      titleWords.forEach(word => {
+        topicMap.set(word, (topicMap.get(word) || 0) + 1)
+      })
+    })
+
+    // Get top topics
+    const topTopics = Array.from(topicMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([topic, count]) => ({ topic, count }))
+
     const stats = {
       totalIdeas: ideaCount.count,
       totalSources: sourceCount.count,
       totalSocialSnippets: snippetCount.count,
-      recentIdeas: recentCount.count
+      recentIdeas: recentCount.count,
+      topTopics,
+      contentGaps: [], // TODO: Implement content gap analysis
+      suggestedFocusAreas: [] // TODO: Implement focus area suggestions
     }
 
     return {
