@@ -86,6 +86,12 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { SimpleResearchPanel } from "@/components/simple-research-panel"
 import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 
 interface EnhancedEditorProps {
   initialDocument?: SelectDocument
@@ -2122,374 +2128,291 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 p-4">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleUndo}
-            disabled={currentHistoryIndex <= 0 || isRewriting}
-            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
-          >
-            <Undo className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRedo}
-            disabled={currentHistoryIndex >= history.length - 1 || isRewriting}
-            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
-          >
-            <Redo className="size-4" />
-          </Button>
-          <Separator orientation="vertical" className="h-6" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={analyzeText}
-            disabled={isAnalyzing || !hasManuallyEdited || isRewriting}
-            className="text-blue-700 hover:bg-blue-100 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Sparkles
-              className={`mr-2 size-4 ${isAnalyzing ? "animate-spin" : ""}`}
-            />
-            {isAnalyzing ? "Analyzing..." : "Analyze"}
-          </Button>
-
-          {/* Research Panel */}
-          <SimpleResearchPanel
-            documentId={document?.id}
-            currentContent={content}
-            isOpen={isResearchPanelOpen}
-            onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
-          />
-        </div>
+      <div className="flex flex-wrap items-center gap-2 border-b p-2">
+        <Button variant="ghost" size="icon" onClick={handleUndo}>
+          <Undo className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleRedo}>
+          <Redo className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleSave}>
+          <Save className="size-4" />
+        </Button>
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Unified AI Enhancement Controls */}
-        <div className="flex flex-nowrap items-center gap-1">
-          {/* Show helper text when no selection, otherwise show buttons */}
-          {!hasSelection && highlights.length === 0 ? (
-            <div className="flex items-center gap-1 px-2 py-1.5 text-xs italic text-gray-500">
-              💡 Select text to unlock AI enhancements
-            </div>
-          ) : (
-            <>
-              {/* Quick Tone Adjustments */}
-              <DropdownMenu
-                onOpenChange={open => {
-                  if (open) {
-                    preserveSelection()
-                  } else {
-                    // Small delay to restore selection after dropdown closes
-                    setTimeout(restoreSelection, 10)
-                  }
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to use tone adjustments"
-                        : "Adjust tone of selected text"
-                    }
-                  >
-                    🎨 Quick Tone
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuLabel>
-                    ✨ Phase 2 Tone Collection
-                  </DropdownMenuLabel>
-                  {[
-                    { tone: "Bold", emoji: "💪" },
-                    { tone: "Witty", emoji: "😄" },
-                    { tone: "Motivational", emoji: "🚀" },
-                    { tone: "Direct", emoji: "🎯" },
-                    { tone: "Professional", emoji: "👔" },
-                    { tone: "Friendly", emoji: "🤝" }
-                  ].map(({ tone, emoji }) => (
-                    <DropdownMenuItem
-                      key={tone}
-                      onSelect={e => {
-                        e.preventDefault()
-                        handleRewrite(tone)
-                      }}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={analyzeText}
+          disabled={isAnalyzing}
+        >
+          <Sparkles className="mr-2 size-4" />
+          Analyze
+        </Button>
+
+        <SimpleResearchPanel
+          documentId={document?.id}
+          currentContent={content}
+          isOpen={isResearchPanelOpen}
+          onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+        />
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <TooltipProvider>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-gray-100 dark:bg-gray-800"
+                      disabled={!hasSelection}
                     >
-                      {emoji} {tone}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Classic Tones</DropdownMenuLabel>
-                  {[
-                    { tone: "Casual", emoji: "😊" },
-                    { tone: "Persuasive", emoji: "🎭" },
-                    { tone: "Clear", emoji: "💎" },
-                    { tone: "Simple", emoji: "🔍" }
-                  ].map(({ tone, emoji }) => (
-                    <DropdownMenuItem
-                      key={tone}
-                      onSelect={e => {
-                        e.preventDefault()
-                        handleRewrite(tone)
-                      }}
+                      <Sparkles className="mr-2 size-4" />
+                      Quick Tone
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use Quick Tone</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>
+                  ✨ Phase 2 Tone Collection
+                </DropdownMenuLabel>
+                {[
+                  { tone: "Bold", emoji: "💪" },
+                  { tone: "Witty", emoji: "😄" },
+                  { tone: "Motivational", emoji: "🚀" },
+                  { tone: "Direct", emoji: "🎯" },
+                  { tone: "Professional", emoji: "👔" },
+                  { tone: "Friendly", emoji: "🤝" }
+                ].map(({ tone, emoji }) => (
+                  <DropdownMenuItem
+                    key={tone}
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleRewrite(tone)
+                    }}
+                  >
+                    {emoji} {tone}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-white dark:bg-gray-900"
+                      disabled={!hasSelection}
                     >
-                      {emoji} {tone}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Advanced AI Enhancements */}
-              <DropdownMenu
-                onOpenChange={open => {
-                  if (open) {
-                    preserveSelection()
-                  } else {
-                    // Small delay to restore selection after dropdown closes
-                    setTimeout(restoreSelection, 10)
-                  }
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap border-blue-200 bg-blue-50 px-2 py-1 text-sm text-blue-700 hover:bg-blue-100 disabled:bg-gray-50 disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to use AI enhancements"
-                        : "Enhance selected text with AI"
-                    }
-                  >
-                    ✨ AI Enhance
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64">
-                  <div className="border-b p-2 text-xs text-gray-600">
-                    💡 Select the text you want to improve, then choose an
-                    option below
-                  </div>
-
-                  <DropdownMenuLabel>📧 Email Subject Lines</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleSubjectLineImprovement("improve")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">✨ Make More Compelling</span>
-                    <span className="text-xs text-gray-500">
-                      Rewrite to get more opens
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleSubjectLineImprovement("ab_test")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">
-                      🔬 Create 3 Test Versions
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      Different styles for A/B testing
-                    </span>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>🔥 Button Text & CTAs</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleCTAImprovement("improve")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">⚡ Make More Clickable</span>
-                    <span className="text-xs text-gray-500">
-                      Improve button text for more clicks
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleCTAImprovement("variations")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">🔄 Give Me 5 Options</span>
-                    <span className="text-xs text-gray-500">
-                      Different button text variations
-                    </span>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>✍️ Regular Content</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("improve_engagement")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">
-                      🎭 Make More Interesting
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      Add hooks and engagement
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("shorten")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">✂️ Make Shorter</span>
-                    <span className="text-xs text-gray-500">
-                      Remove fluff, keep key points
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("structure")
-                    }}
-                    className="flex h-auto flex-col items-start gap-1 py-2"
-                  >
-                    <span className="font-medium">🏗️ Reorganize Flow</span>
-                    <span className="text-xs text-gray-500">
-                      Better structure and transitions
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Content Extension */}
-              <DropdownMenu
-                onOpenChange={open => {
-                  if (open) {
-                    preserveSelection()
-                  } else {
-                    // Small delay to restore selection after dropdown closes
-                    setTimeout(restoreSelection, 10)
-                  }
-                }}
-              >
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap border-orange-200 bg-orange-50 px-2 py-1 text-sm text-orange-700 hover:bg-orange-100 disabled:bg-gray-50 disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to extend content"
-                        : "Extend selected content"
-                    }
-                  >
-                    ➕ Extend
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("continue")
-                    }}
-                  >
-                    ▶️ Continue Writing
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("precede")
-                    }}
-                  >
-                    ◀️ Add Introduction
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("expand_section")
-                    }}
-                  >
-                    🔍 Expand Details
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Social Snippet Generator */}
-              {hasSelection && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    preserveSelection()
-                    setIsSocialSnippetOpen(true)
+                      <Sparkles className="mr-2 size-4" />
+                      AI Enhance
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use AI Enhance</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent className="w-64">
+                <DropdownMenuLabel>📧 Email Subject Lines</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleSubjectLineImprovement("improve")
                   }}
-                  className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
-                  title="Create social media posts from selected text"
+                  className="flex h-auto flex-col items-start gap-1 py-2"
                 >
-                  📱 Create Social Post
-                </Button>
-              )}
+                  <span className="font-medium">✨ Make More Compelling</span>
+                  <span className="text-muted-foreground text-xs">
+                    Rewrite to get more opens
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleSubjectLineImprovement("ab_test")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🔬 Create 3 Test Versions</span>
+                  <span className="text-muted-foreground text-xs">
+                    Different styles for A/B testing
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>🔥 Button Text & CTAs</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleCTAImprovement("improve")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">⚡ Make More Clickable</span>
+                  <span className="text-muted-foreground text-xs">
+                    Improve button text for more clicks
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleCTAImprovement("variations")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🔄 Give Me 5 Options</span>
+                  <span className="text-muted-foreground text-xs">
+                    Different button text variations
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>✍️ Regular Content</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("improve_engagement")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🎭 Make More Interesting</span>
+                  <span className="text-muted-foreground text-xs">
+                    Add hooks and engagement
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("shorten")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">✂️ Make Shorter</span>
+                  <span className="text-muted-foreground text-xs">
+                    Remove fluff, keep key points
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("structure")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🏗️ Reorganize Flow</span>
+                  <span className="text-muted-foreground text-xs">
+                    Better structure and transitions
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              <SocialSnippetGenerator
-                selectedText={preservedSelection?.text || ""}
-                documentId={document?.id}
-                isOpen={isSocialSnippetOpen}
-                onOpenChange={setIsSocialSnippetOpen}
-              />
-            </>
-          )}
-        </div>
-
-        {highlights.length > 0 && (
-          <div className="ml-auto flex items-center">
-            <Badge variant="secondary" className="ml-2">
-              {highlights.length} suggestions
-            </Badge>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-white dark:bg-gray-900"
+                      disabled={!hasSelection}
+                    >
+                      <Sparkles className="mr-2 size-4" />
+                      Extend
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use Extend</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("continue")
+                  }}
+                >
+                  ▶️ Continue Writing
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("precede")
+                  }}
+                >
+                  ◀️ Add Introduction
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("expand_section")
+                  }}
+                >
+                  🔍 Expand Details
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
+        </TooltipProvider>
+
+        <SocialSnippetGenerator
+          documentId={document?.id}
+          sourceText={content}
+          isOpen={isSocialSnippetOpen}
+          onOpenChange={setIsSocialSnippetOpen}
+        />
       </div>
 
       {highlights.length > 0 && (
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
-          <div className="flex items-center gap-4 text-xs">
-            <span className="font-medium text-gray-600">Legend:</span>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
-              <span className="text-gray-600">Grammar/Spelling</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
-              <span className="text-gray-600">Clarity</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
-              <span className="text-gray-600">Conciseness</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
-              <span className="text-gray-600">Passive Voice</span>
-            </div>
-          </div>
+        <div className="ml-auto flex items-center">
+          <Badge variant="secondary" className="ml-2">
+            {highlights.length} suggestions
+          </Badge>
         </div>
       )}
+
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
+        <div className="flex items-center gap-4 text-xs">
+          <span className="font-medium text-gray-600">Legend:</span>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
+            <span className="text-gray-600">Grammar/Spelling</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
+            <span className="text-gray-600">Clarity</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
+            <span className="text-gray-600">Conciseness</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
+            <span className="text-gray-600">Passive Voice</span>
+          </div>
+        </div>
+      </div>
 
       <div className="relative flex-1 bg-white p-6">
         <div
@@ -2545,214 +2468,84 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       {selectedSuggestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <Card className="w-full max-w-md">
             <CardContent className="p-6">
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{selectedSuggestion.icon}</span>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-                      {selectedSuggestion.title}
-                    </h3>
-                    <Badge variant="outline" className="mt-1 text-xs">
-                      {selectedSuggestion.type}
-                    </Badge>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedSuggestion(null)}
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-
-              <p className="mb-4 text-sm text-gray-700 dark:text-gray-300">
-                {selectedSuggestion.description}
+              <h3 className="text-lg font-semibold">
+                Suggestion: {selectedSuggestion.type}
+              </h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Original:{" "}
+                <span className="font-mono text-red-500">
+                  {selectedSuggestion.originalText}
+                </span>
               </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
-                    Original:
-                  </label>
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
-                    <del>{selectedSuggestion.originalText}</del>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
-                    Suggested:
-                  </label>
-                  <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-200">
-                    <strong>{selectedSuggestion.suggestedText}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => {
-                      const highlight = highlights.find(
-                        h => h.suggestion.id === selectedSuggestion.id
-                      )
-                      if (highlight) applySuggestion(highlight)
-                    }}
-                    className="flex-1"
-                  >
-                    <Check className="mr-2 size-4" />
-                    Apply
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => dismissSuggestionById(selectedSuggestion.id)}
-                    className="flex-1"
-                  >
-                    Dismiss
-                  </Button>
-                </div>
-
-                {/* Rewrite Options for Inline AI Flags */}
-                <div className="border-t pt-3">
-                  <p className="mb-2 text-xs font-medium text-gray-600">
-                    Or rewrite this text with different tones:
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "professional",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      👔 Professional
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "friendly",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      🤝 Friendly
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "persuasive",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      💪 Persuasive
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "casual",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      😊 Casual
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "direct",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      🎯 Direct
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isRewriting}
-                      onClick={() =>
-                        handleRewriteWithValidation(
-                          "witty",
-                          selectedSuggestion.originalText
-                        )
-                      }
-                      className="text-xs"
-                    >
-                      😄 Witty
-                    </Button>
-                  </div>
-                  {isRewriting && (
-                    <div className="mt-2 text-center text-xs text-blue-600">
-                      <Sparkles className="mr-1 inline size-3 animate-spin" />
-                      Rewriting...
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 text-center">
-                <Badge variant="secondary" className="text-xs">
-                  {selectedSuggestion.confidence}% confidence
-                </Badge>
+              <p className="mt-2 text-sm text-gray-600">
+                Suggestion:{" "}
+                <span className="font-mono text-green-500">
+                  {selectedSuggestion.suggestedText}
+                </span>
+              </p>
+              <p className="mt-4 text-sm">{selectedSuggestion.description}</p>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
+                >
+                  <X className="mr-2 size-4" />
+                  Dismiss
+                </Button>
+                <Button
+                  onClick={() => applySuggestionById(selectedSuggestion.id)}
+                >
+                  <Check className="mr-2 size-4" />
+                  Apply
+                </Button>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {showDeleteAlert && (
-        <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                Are you sure you want to delete this document?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the
-                document and remove all associated data.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      )}
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete your
+              document and any associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="fixed bottom-4 right-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="icon">
+              <Settings className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuLabel>Editor Settings</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div className="flex items-center justify-between p-2">
+              <Label htmlFor="parallel-analysis">Parallel Analysis</Label>
+              <Switch
+                id="parallel-analysis"
+                checked={useParallelAnalysis}
+                onCheckedChange={setUseParallelAnalysis}
+              />
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </div>
   )
 }

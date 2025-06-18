@@ -18,16 +18,13 @@ import {
   SheetContent,
   SheetDescription,
   SheetHeader,
-  SheetTitle,
-  SheetTrigger
+  SheetTitle
 } from "@/components/ui/sheet"
 import {
   Search,
-  ExternalLink,
   Plus,
   Lightbulb,
   BookOpen,
-  Copy,
   Trash2,
   Sparkles,
   RefreshCw
@@ -68,6 +65,8 @@ export function ResearchPanel({
   const [isSearching, setIsSearching] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState("sources")
+  const [allowedDomains, setAllowedDomains] = useState("")
+  const [disallowedDomains, setDisallowedDomains] = useState("")
 
   // Data states
   const [sources, setSources] = useState<SelectResearchSource[]>([])
@@ -83,12 +82,12 @@ export function ResearchPanel({
 
   // Load data on mount
   useEffect(() => {
-    if (user) {
+    if (user && isOpen) {
       loadSources()
       loadIdeas()
       loadStats()
     }
-  }, [user, documentId])
+  }, [user, documentId, isOpen])
 
   const loadSources = async () => {
     try {
@@ -130,25 +129,31 @@ export function ResearchPanel({
     }
 
     setIsSearching(true)
+    setContentSummary(null)
+    setSources([])
     try {
-      // Summarize content and extract keywords
       const summaryResult = await summarizeContentAction(currentContent)
       if (!summaryResult.isSuccess) {
         toast.error(summaryResult.message)
         return
       }
 
-      // Set the summary data
       setContentSummary(summaryResult.data)
 
-      // Find relevant articles using the keywords
       const articlesResult = await findRelevantArticlesAction(
         summaryResult.data.keywords,
-        documentId
+        documentId,
+        allowedDomains
+          .split(",")
+          .map(d => d.trim())
+          .filter(d => d),
+        disallowedDomains
+          .split(",")
+          .map(d => d.trim())
+          .filter(d => d)
       )
       if (articlesResult.isSuccess) {
-        // Refresh sources from database to get the saved ones
-        loadSources()
+        loadSources() // Refresh sources to show newly saved ones
         toast.success(
           `Content analyzed! Found ${articlesResult.data.length} relevant articles`
         )
@@ -173,11 +178,7 @@ export function ResearchPanel({
       const result = await searchPastDocumentsAction(searchQuery, documentId)
       if (result.isSuccess) {
         setPastDocuments(result.data)
-        if (result.data.length === 0) {
-          toast.info("No relevant past documents found")
-        } else {
-          toast.success(`Found ${result.data.length} relevant documents`)
-        }
+        toast.success(`Found ${result.data.length} relevant past documents`)
       } else {
         toast.error(result.message)
       }
@@ -206,7 +207,7 @@ export function ResearchPanel({
         toast.error(result.message)
       }
     } catch (error) {
-      toast.error("Failed to generate ideas")
+      toast.error(`Failed to generate ${type}`)
     } finally {
       setIsGenerating(false)
     }
@@ -216,8 +217,9 @@ export function ResearchPanel({
     try {
       const result = await saveIdeaAction(idea, documentId)
       if (result.isSuccess) {
-        toast.success("Idea saved successfully")
-        loadIdeas() // Refresh ideas list
+        toast.success("Idea saved!")
+        loadIdeas()
+        setGeneratedIdeas([])
       } else {
         toast.error(result.message)
       }
@@ -254,338 +256,267 @@ export function ResearchPanel({
     }
   }
 
-  const handleInsertCitation = (source: SelectResearchSource) => {
-    // This would integrate with the editor to insert the citation
-    const citation = source.snippet || `[${source.title}](${source.url})`
-    navigator.clipboard.writeText(citation)
-    toast.success("Citation copied to clipboard")
-  }
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
     toast.success("Copied to clipboard")
   }
 
+  const handleInsertCitation = (source: SelectResearchSource) => {
+    const citation = `[${source.title}](${source.url})`
+    copyToClipboard(citation)
+    toast.info("Citation added to clipboard")
+  }
+
   return (
     <Sheet open={isOpen} onOpenChange={onToggle}>
-      <SheetTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Search className="size-4" />
-          Research
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-[400px] p-0 sm:w-[500px]">
-        <SheetHeader className="p-6 pb-4">
-          <SheetTitle className="flex items-center gap-2">
-            <Sparkles className="size-5" />
-            Research & Ideas
-          </SheetTitle>
+      <SheetContent className="w-[450px] p-0 sm:w-[540px]">
+        <SheetHeader className="border-b p-6">
+          <SheetTitle>Research & Ideation</SheetTitle>
           <SheetDescription>
-            Find sources, generate ideas, and create social snippets
+            Find sources, analyze past work, and generate new ideas.
           </SheetDescription>
         </SheetHeader>
-
-        {/* Stats Overview */}
-        {stats && (
-          <div className="px-6 pb-4">
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="p-3">
-                <div className="text-sm text-gray-600">Ideas</div>
-                <div className="text-xl font-semibold">{stats.totalIdeas}</div>
-              </Card>
-              <Card className="p-3">
-                <div className="text-sm text-gray-600">Sources</div>
-                <div className="text-xl font-semibold">
-                  {stats.totalSources}
-                </div>
-              </Card>
-            </div>
-          </div>
-        )}
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList className="mx-6 mb-4 grid w-full grid-cols-2">
-            <TabsTrigger value="sources">Sources</TabsTrigger>
-            <TabsTrigger value="ideas">Ideas</TabsTrigger>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="sources">
+              <BookOpen className="mr-2 size-4" />
+              Sources ({sources.length})
+            </TabsTrigger>
+            <TabsTrigger value="ideas">
+              <Lightbulb className="mr-2 size-4" />
+              Ideas ({ideas.length})
+            </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="sources" className="mt-0 h-full px-6">
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="space-y-4">
-                {/* Source Finding */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Find Sources</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Button
-                      onClick={handleAnalyzeContent}
-                      disabled={isSearching || !currentContent.trim()}
-                      className="w-full"
-                      size="sm"
-                    >
-                      {isSearching ? (
-                        <RefreshCw className="mr-2 size-4 animate-spin" />
-                      ) : (
-                        <Search className="mr-2 size-4" />
-                      )}
-                      Analyze & Find Articles
-                    </Button>
-
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Search past documents..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        onKeyDown={e =>
-                          e.key === "Enter" && handleSearchPastDocuments()
-                        }
-                        className="text-sm"
-                      />
-                      <Button
-                        onClick={handleSearchPastDocuments}
-                        disabled={isSearching}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <Search className="size-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Past Documents Results */}
-                {pastDocuments.length > 0 && (
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Past Documents</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {pastDocuments.map(doc => (
-                        <div
-                          key={doc.id}
-                          className="space-y-2 rounded-lg border p-3"
-                        >
-                          <div className="text-sm font-medium">{doc.title}</div>
-                          <div className="text-xs text-gray-600">
-                            {doc.content}
-                          </div>
-                          <div className="text-xs text-blue-600">
-                            {doc.relevance}
-                          </div>
-                        </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* External Sources */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">External Sources</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {sources.length === 0 ? (
-                      <div className="py-4 text-center text-gray-500">
-                        <BookOpen className="mx-auto mb-2 size-8 opacity-50" />
-                        <div className="text-sm">No sources found yet</div>
-                      </div>
-                    ) : (
-                      sources.map(source => (
-                        <div
-                          key={source.id}
-                          className="space-y-2 rounded-lg border p-3"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="pr-2 text-sm font-medium">
-                              {source.title}
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                onClick={() => handleInsertCitation(source)}
-                                size="sm"
-                                variant="ghost"
-                                className="h-auto p-1"
-                              >
-                                <Copy className="size-3" />
-                              </Button>
-                              <Button
-                                onClick={() =>
-                                  window.open(source.url, "_blank")
-                                }
-                                size="sm"
-                                variant="ghost"
-                                className="h-auto p-1"
-                              >
-                                <ExternalLink className="size-3" />
-                              </Button>
-                              <Button
-                                onClick={() => handleDeleteSource(source.id)}
-                                size="sm"
-                                variant="ghost"
-                                className="h-auto p-1 text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 className="size-3" />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {source.summary}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {source.sourceType || "article"}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {source.relevanceScore || 80}% relevant
-                            </Badge>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </CardContent>
-                </Card>
+          <TabsContent value="sources">
+            <ScrollArea className="h-[calc(100vh-160px)]">
+              <div className="space-y-4 p-4">
+                <Button
+                  onClick={handleAnalyzeContent}
+                  disabled={isSearching || !currentContent.trim()}
+                  className="w-full"
+                >
+                  {isSearching ? (
+                    <RefreshCw className="mr-2 size-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 size-4" />
+                  )}
+                  Analyze & Find Articles
+                </Button>
+                <div className="space-y-2">
+                  <Input
+                    placeholder="Allowed domains (e.g., .gov, .edu)"
+                    value={allowedDomains}
+                    onChange={e => setAllowedDomains(e.target.value)}
+                    className="text-sm"
+                  />
+                  <Input
+                    placeholder="Disallowed domains (e.g., reddit.com)"
+                    value={disallowedDomains}
+                    onChange={e => setDisallowedDomains(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <Input
+                    placeholder="Search past documents..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e =>
+                      e.key === "Enter" && handleSearchPastDocuments()
+                    }
+                    className="text-sm"
+                  />
+                  <Button
+                    onClick={handleSearchPastDocuments}
+                    disabled={isSearching}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <Search className="size-4" />
+                  </Button>
+                </div>
               </div>
-            </ScrollArea>
-          </TabsContent>
 
-          <TabsContent value="ideas" className="mt-0 h-full px-6">
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              <div className="space-y-4">
-                {/* Idea Generation */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Generate Ideas</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="grid grid-cols-3 gap-2">
-                      <Button
-                        onClick={() => handleGenerateIdeas("headlines")}
-                        disabled={isGenerating || !currentContent.trim()}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Headlines
-                      </Button>
-                      <Button
-                        onClick={() => handleGenerateIdeas("topics")}
-                        disabled={isGenerating || !currentContent.trim()}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Topics
-                      </Button>
-                      <Button
-                        onClick={() => handleGenerateIdeas("outlines")}
-                        disabled={isGenerating || !currentContent.trim()}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Outlines
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+              {contentSummary && (
+                <div className="border-t p-4">
+                  <h4 className="mb-2 text-base font-semibold">
+                    Content Analysis
+                  </h4>
+                  <p className="text-muted-foreground mb-2 text-sm">
+                    {contentSummary.summary}
+                  </p>
+                  <h5 className="mb-1 text-sm font-semibold">Main Points:</h5>
+                  <ul className="mb-2 list-inside list-disc space-y-1 text-sm">
+                    {contentSummary.mainPoints.map((point, i) => (
+                      <li key={i}>{point}</li>
+                    ))}
+                  </ul>
+                  <h5 className="mb-1 text-sm font-semibold">Keywords:</h5>
+                  <div className="flex flex-wrap gap-1">
+                    {contentSummary.keywords.map((kw, i) => (
+                      <Badge key={i} variant="secondary">
+                        {kw}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                {/* Generated Ideas */}
-                {generatedIdeas.length > 0 && (
-                  <Card>
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm">Generated Ideas</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {generatedIdeas.map((idea, index) => (
-                        <div
-                          key={index}
-                          className="space-y-2 rounded-lg border p-3"
+              {sources.length > 0 && (
+                <div className="border-t p-4">
+                  <h4 className="mb-2 text-base font-semibold">
+                    Found Sources ({sources.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {sources.map(source => (
+                      <Card key={source.id} className="p-3">
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm font-semibold hover:underline"
                         >
-                          <div className="flex items-start justify-between">
-                            <div className="pr-2 text-sm font-medium">
-                              {idea.title}
-                            </div>
+                          {source.title}
+                        </a>
+                        <p className="text-muted-foreground my-1 truncate text-xs">
+                          {source.url}
+                        </p>
+                        <p className="my-2 text-sm">{source.summary}</p>
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline">{source.sourceType}</Badge>
+                          <div className="flex items-center gap-1">
                             <Button
-                              onClick={() => handleSaveIdea(idea)}
-                              size="sm"
+                              size="icon"
                               variant="ghost"
-                              className="h-auto p-1"
+                              onClick={() => handleInsertCitation(source)}
+                              title="Insert Citation"
                             >
-                              <Plus className="size-3" />
+                              <Plus className="size-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleDeleteSource(source.id)}
+                              title="Delete Source"
+                            >
+                              <Trash2 className="size-4" />
                             </Button>
                           </div>
-                          <div className="text-xs text-gray-600">
-                            {idea.outline}
-                          </div>
-                          <Badge variant="outline" className="text-xs">
-                            {idea.confidence}% confidence
-                          </Badge>
                         </div>
-                      ))}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Saved Ideas */}
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm">Saved Ideas</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {ideas.length === 0 ? (
-                      <div className="py-4 text-center text-gray-500">
-                        <Lightbulb className="mx-auto mb-2 size-8 opacity-50" />
-                        <div className="text-sm">No ideas saved yet</div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </ScrollArea>
+          </TabsContent>
+          <TabsContent value="ideas">
+            <ScrollArea className="h-[calc(100vh-160px)]">
+              <div className="space-y-4 p-4">
+                {stats && (
+                  <div className="grid grid-cols-2 gap-3 text-center">
+                    <Card className="p-3">
+                      <div className="text-muted-foreground text-sm">
+                        Total Ideas
                       </div>
-                    ) : (
-                      ideas.map(idea => (
-                        <div
-                          key={idea.id}
-                          className="space-y-2 rounded-lg border p-3"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="pr-2 text-sm font-medium">
-                              {idea.title}
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                onClick={() => copyToClipboard(idea.content)}
-                                size="sm"
-                                variant="ghost"
-                                className="h-auto p-1"
-                              >
-                                <Copy className="size-3" />
-                              </Button>
-                              <Button
-                                onClick={() => handleDeleteIdea(idea.id)}
-                                size="sm"
-                                variant="ghost"
-                                className="h-auto p-1 text-red-500 hover:text-red-700"
-                              >
-                                <Trash2 className="size-3" />
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            {idea.content}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {idea.type}
-                            </Badge>
-                            {(idea.tags || []).map(tag => (
-                              <Badge
-                                key={tag}
-                                variant="outline"
-                                className="text-xs"
-                              >
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      ))
-                    )}
+                      <div className="text-xl font-bold">
+                        {stats.totalIdeas}
+                      </div>
+                    </Card>
+                    <Card className="p-3">
+                      <div className="text-muted-foreground text-sm">
+                        Total Sources
+                      </div>
+                      <div className="text-xl font-bold">
+                        {stats.totalSources}
+                      </div>
+                    </Card>
+                  </div>
+                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">Generate Ideas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-3 gap-2">
+                    <Button
+                      onClick={() => handleGenerateIdeas("headlines")}
+                      disabled={isGenerating || !currentContent.trim()}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Headlines
+                    </Button>
+                    <Button
+                      onClick={() => handleGenerateIdeas("topics")}
+                      disabled={isGenerating || !currentContent.trim()}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Topics
+                    </Button>
+                    <Button
+                      onClick={() => handleGenerateIdeas("outlines")}
+                      disabled={isGenerating || !currentContent.trim()}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Outlines
+                    </Button>
                   </CardContent>
                 </Card>
+
+                {generatedIdeas.length > 0 && (
+                  <div className="space-y-2 border-t pt-4">
+                    <h4 className="text-base font-semibold">Generated Ideas</h4>
+                    {generatedIdeas.map((idea, index) => (
+                      <Card key={index} className="p-3">
+                        <h5 className="font-semibold">{idea.title}</h5>
+                        <p className="text-muted-foreground my-1 text-sm">
+                          {idea.outline}
+                        </p>
+                        <div className="mt-2 flex items-center justify-between">
+                          <Badge variant="secondary">{idea.type}</Badge>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveIdea(idea)}
+                          >
+                            <Plus className="mr-2 size-4" /> Save
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+
+                {ideas.length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="mb-2 text-base font-semibold">
+                      Saved Ideas ({ideas.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {ideas.map(idea => (
+                        <Card key={idea.id} className="p-3">
+                          <h5 className="font-semibold">{idea.title}</h5>
+                          <p className="text-muted-foreground my-1 text-sm">
+                            {idea.content}
+                          </p>
+                          <div className="mt-2 flex items-center justify-between">
+                            <Badge variant="secondary">{idea.type}</Badge>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => handleDeleteIdea(idea.id)}
+                              title="Delete Idea"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </div>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </TabsContent>

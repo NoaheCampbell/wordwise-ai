@@ -117,7 +117,9 @@ Content:
  */
 export async function findRelevantArticlesAction(
   keywords: string[],
-  documentId?: string
+  documentId?: string,
+  allowedDomains: string[] = [],
+  disallowedDomains: string[] = []
 ): Promise<ActionState<ExternalSource[]>> {
   try {
     const { userId } = await auth()
@@ -135,7 +137,7 @@ export async function findRelevantArticlesAction(
     const searchQuery = keywords.join(" ")
     const sources: ExternalSource[] = []
 
-    const prompt = `
+    let prompt = `
 Please perform a web search to find relevant articles and resources for the following query: "${searchQuery}"
 
 Return a JSON object with a "sources" array. Each object in the array should have the following structure:
@@ -148,6 +150,16 @@ Return a JSON object with a "sources" array. Each object in the array should hav
 
 Please provide at least 5 high-quality sources. The summary should be concise and informative. The output must be only the raw JSON object.
 `
+    if (allowedDomains.length > 0) {
+      prompt += `\nIMPORTANT: Only include results from the following domains or TLDs: ${allowedDomains.join(
+        ", "
+      )}.`
+    }
+    if (disallowedDomains.length > 0) {
+      prompt += `\nIMPORTANT: Do NOT include results from the following domains: ${disallowedDomains.join(
+        ", "
+      )}.`
+    }
 
     const response = await openai.responses.create({
       model: "gpt-4o",
@@ -175,8 +187,35 @@ Please provide at least 5 high-quality sources. The summary should be concise an
       }
     }
 
-    if (result.sources && Array.isArray(result.sources)) {
-      result.sources.forEach((source: any, index: number) => {
+    let apiSources = (result.sources || []) as any[]
+
+    // Filter sources based on domain restrictions
+    if (allowedDomains.length > 0) {
+      apiSources = apiSources.filter(source => {
+        if (!source.url) return false
+        try {
+          const hostname = new URL(source.url).hostname
+          return allowedDomains.some(domain => hostname.endsWith(domain))
+        } catch {
+          return false
+        }
+      })
+    }
+
+    if (disallowedDomains.length > 0) {
+      apiSources = apiSources.filter(source => {
+        if (!source.url) return false
+        try {
+          const hostname = new URL(source.url).hostname
+          return !disallowedDomains.some(domain => hostname.includes(domain))
+        } catch {
+          return false
+        }
+      })
+    }
+
+    if (apiSources && Array.isArray(apiSources)) {
+      apiSources.forEach((source: any, index: number) => {
         if (source.url && source.title && source.summary) {
           try {
             const urlHost = new URL(source.url).hostname
@@ -196,12 +235,11 @@ Please provide at least 5 high-quality sources. The summary should be concise an
       })
     }
 
-    // If no sources found, return an error.
     if (sources.length === 0) {
       return {
         isSuccess: false,
         message:
-          "No articles found using web search. Please try different keywords."
+          "No articles found that match your criteria. Please try different keywords or adjust your domain filters."
       }
     }
 
@@ -519,7 +557,7 @@ interface SocialVariation {
  * Generate social media snippets from selected text
  */
 export async function generateSocialSnippetsAction(
-  selectedText: string,
+  sourceText: string,
   platform: "twitter" | "linkedin" | "instagram" | "all" = "all",
   documentId?: string
 ): Promise<ActionState<SocialVariation[]>> {
@@ -550,7 +588,7 @@ Create a Twitter post from this content. Requirements:
 - Engaging and conversational tone
 - Include a call-to-action or question when appropriate
 
-Content: "${selectedText}"
+Content: "${sourceText}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the tweet text
@@ -569,7 +607,7 @@ Create a LinkedIn post from this content. Requirements:
 - 2-4 relevant hashtags
 - Structure with line breaks for readability
 
-Content: "${selectedText}"
+Content: "${sourceText}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the LinkedIn post text
@@ -589,7 +627,7 @@ Create an Instagram caption from this content. Requirements:
 - 3-5 hashtags
 - Structure with line breaks
 
-Content: "${selectedText}"
+Content: "${sourceText}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the Instagram caption
@@ -625,7 +663,7 @@ Variations:`
       const savePromises = snippets.map(snippet => 
         createSocialSnippetAction({
           documentId,
-          originalText: selectedText,
+          originalText: sourceText,
           platform: snippet.platform,
           content: snippet.content,
           characterCount: snippet.characterCount,
@@ -643,9 +681,9 @@ Variations:`
       createIdeaAction({
         documentId,
         type: "social",
-        title: `Social snippets for: ${selectedText.slice(0, 50)}...`,
+        title: `Social snippets for: ${sourceText.slice(0, 50)}...`,
         content: `Generated ${snippets.length} social media variations`,
-        metadata: { platform: platform, characterCount: selectedText.length },
+        metadata: { platform: platform, characterCount: sourceText.length },
         tags: ["social-media", "ai-generated"]
       }).catch(error => {
         console.error("Error saving social idea:", error)

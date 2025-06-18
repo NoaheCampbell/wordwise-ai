@@ -103,7 +103,8 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 ### 5B.1 Smart Source Finder  
 - [ ] Embed current draft → extract topical keywords  
 - [ ] Query external content API (e.g., NewsAPI / Google CSE)  
-- [ ] Return 3-5 links + 1-line summaries + markdown citation snippets  
+- [ ] Return 3-5 links + 1-line summaries + markdown citation snippets 
+- [ ] Allows user to allow or disallow certain sources   
 
 ### 5B.2 Past-Issue Analyzer  
 - [ ] Build vector store of user’s past newsletters (title, tags, embeddings)  

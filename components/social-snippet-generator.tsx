@@ -6,7 +6,7 @@ Social Snippet Generator component for Phase 5B.5 - Generate social media posts 
 
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -34,14 +34,14 @@ import { generateSocialSnippetsAction } from "@/actions/research-ideation-action
 import { SocialVariation } from "@/types"
 
 interface SocialSnippetGeneratorProps {
-  selectedText: string
+  sourceText: string
   documentId?: string
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
 export function SocialSnippetGenerator({
-  selectedText,
+  sourceText,
   documentId,
   isOpen = false,
   onOpenChange
@@ -50,23 +50,34 @@ export function SocialSnippetGenerator({
   const [snippets, setSnippets] = useState<SocialVariation[]>([])
   const [activeTab, setActiveTab] = useState("all")
 
+  const availablePlatforms = useMemo(
+    () =>
+      ["twitter", "linkedin", "instagram"].filter(p =>
+        snippets.some(snippet => snippet.platform === p)
+      ),
+    [snippets]
+  )
+
   const handleGenerate = async (
     platform: "twitter" | "linkedin" | "instagram" | "all" = "all"
   ) => {
-    if (!selectedText.trim()) {
-      toast.error("No text selected")
+    if (!sourceText.trim()) {
+      toast.error(
+        "Document is empty. Write some content to generate social posts."
+      )
       return
     }
 
     setIsGenerating(true)
     try {
       const result = await generateSocialSnippetsAction(
-        selectedText,
+        sourceText,
         platform,
         documentId
       )
       if (result.isSuccess) {
         setSnippets(result.data)
+        setActiveTab(platform)
         toast.success(`Generated ${result.data.length} social media variations`)
       } else {
         toast.error(result.message)
@@ -99,13 +110,13 @@ export function SocialSnippetGenerator({
   const getPlatformColor = (platform: string) => {
     switch (platform) {
       case "twitter":
-        return "bg-blue-50 text-blue-700 border-blue-200"
+        return "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
       case "linkedin":
-        return "bg-blue-50 text-blue-800 border-blue-300"
+        return "bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800"
       case "instagram":
-        return "bg-pink-50 text-pink-700 border-pink-200"
+        return "bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800"
       default:
-        return "bg-gray-50 text-gray-700 border-gray-200"
+        return "bg-gray-50 dark:bg-gray-800/20 text-foreground border-border"
     }
   }
 
@@ -122,31 +133,18 @@ export function SocialSnippetGenerator({
           Create Social Post
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[80vh] max-w-4xl p-0">
+      <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col p-0">
         <DialogHeader className="p-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="size-5" />
             Social Media Snippets
           </DialogTitle>
           <DialogDescription>
-            Generate social media posts from your selected text
+            Generate social media posts from your document content.
           </DialogDescription>
         </DialogHeader>
 
         <div className="px-6 pb-4">
-          {/* Selected Text */}
-          <Card className="mb-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Selected Text</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg bg-gray-50 p-3 text-sm text-gray-700">
-                {selectedText.slice(0, 200)}
-                {selectedText.length > 200 && "..."}
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Generation Buttons */}
           <div className="mb-4 flex gap-2">
             <Button
@@ -193,18 +191,42 @@ export function SocialSnippetGenerator({
 
           {/* Results */}
           {snippets.length > 0 && (
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="grid w-full grid-cols-4">
-                <TabsTrigger value="all">All</TabsTrigger>
-                <TabsTrigger value="twitter">Twitter</TabsTrigger>
-                <TabsTrigger value="linkedin">LinkedIn</TabsTrigger>
-                <TabsTrigger value="instagram">Instagram</TabsTrigger>
+            <Tabs
+              value={activeTab}
+              onValueChange={newTab => {
+                if (newTab === "all" || availablePlatforms.includes(newTab)) {
+                  setActiveTab(newTab)
+                }
+              }}
+            >
+              <TabsList
+                className="grid w-full"
+                style={{
+                  gridTemplateColumns: `repeat(${
+                    availablePlatforms.length > 1
+                      ? availablePlatforms.length + 1
+                      : availablePlatforms.length
+                  }, minmax(0, 1fr))`
+                }}
+              >
+                {availablePlatforms.length > 1 && (
+                  <TabsTrigger value="all">All</TabsTrigger>
+                )}
+                {availablePlatforms.map(platform => (
+                  <TabsTrigger
+                    key={platform}
+                    value={platform}
+                    className="capitalize"
+                  >
+                    {platform}
+                  </TabsTrigger>
+                ))}
               </TabsList>
 
-              <TabsContent value="all" className="mt-4">
-                <ScrollArea className="h-[400px]">
+              <TabsContent value="all" className="mt-4 flex-1 overflow-y-auto">
+                <ScrollArea className="h-full pr-4">
                   <div className="space-y-4">
-                    {["twitter", "linkedin", "instagram"].map(platform => {
+                    {availablePlatforms.map(platform => {
                       const platformSnippets = getFilteredSnippets(platform)
                       if (platformSnippets.length === 0) return null
 
@@ -218,7 +240,9 @@ export function SocialSnippetGenerator({
                             {platformSnippets.map((snippet, index) => (
                               <Card
                                 key={index}
-                                className={`border ${getPlatformColor(platform)}`}
+                                className={`border ${getPlatformColor(
+                                  platform
+                                )}`}
                               >
                                 <CardContent className="p-4">
                                   <div className="mb-2 flex items-start justify-between">
@@ -239,10 +263,10 @@ export function SocialSnippetGenerator({
                                       <Copy className="size-3" />
                                     </Button>
                                   </div>
-                                  <div className="mb-2 whitespace-pre-wrap text-sm">
+                                  <div className="text-foreground mb-2 whitespace-pre-wrap text-sm">
                                     {snippet.content}
                                   </div>
-                                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                                  <div className="text-muted-foreground flex items-center gap-2 text-xs">
                                     <span>
                                       {snippet.characterCount} characters
                                     </span>
@@ -263,7 +287,7 @@ export function SocialSnippetGenerator({
                 </ScrollArea>
               </TabsContent>
 
-              {["twitter", "linkedin", "instagram"].map(platform => (
+              {availablePlatforms.map(platform => (
                 <TabsContent key={platform} value={platform} className="mt-4">
                   <ScrollArea className="h-[400px]">
                     <div className="grid gap-3">
@@ -286,10 +310,10 @@ export function SocialSnippetGenerator({
                                 <Copy className="size-3" />
                               </Button>
                             </div>
-                            <div className="mb-2 whitespace-pre-wrap text-sm">
+                            <div className="text-foreground mb-2 whitespace-pre-wrap text-sm">
                               {snippet.content}
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-600">
+                            <div className="text-muted-foreground flex items-center gap-2 text-xs">
                               <span>{snippet.characterCount} characters</span>
                               {snippet.hashtags.length > 0 && (
                                 <span>• {snippet.hashtags.join(" ")}</span>
@@ -306,10 +330,12 @@ export function SocialSnippetGenerator({
           )}
 
           {snippets.length === 0 && !isGenerating && (
-            <div className="py-8 text-center text-gray-500">
-              <Share2 className="mx-auto mb-4 size-12 opacity-50" />
-              <div className="text-sm">
-                Click "Generate All Platforms" to create social media posts
+            <div className="text-muted-foreground flex h-[400px] items-center justify-center rounded-lg border border-dashed py-8 text-center">
+              <div>
+                <Share2 className="mx-auto mb-4 size-12 opacity-50" />
+                <div className="text-sm">
+                  Click "Generate All Platforms" to create social media posts
+                </div>
               </div>
             </div>
           )}

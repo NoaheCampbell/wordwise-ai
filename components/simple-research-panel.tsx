@@ -12,13 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from "@/components/ui/dialog"
 import {
   Search,
   ExternalLink,
@@ -33,6 +33,7 @@ import {
   summarizeContentAction,
   findRelevantArticlesAction
 } from "@/actions/research-ideation-actions"
+import { Input } from "@/components/ui/input"
 
 interface SimpleResearchPanelProps {
   documentId?: string
@@ -62,6 +63,8 @@ export function SimpleResearchPanel({
 }: SimpleResearchPanelProps) {
   const { user } = useUser()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [allowedDomains, setAllowedDomains] = useState("")
+  const [disallowedDomains, setDisallowedDomains] = useState("")
   const [contentSummary, setContentSummary] = useState<ContentSummary | null>(
     null
   )
@@ -92,7 +95,15 @@ export function SimpleResearchPanel({
       // Find relevant articles
       const articlesResult = await findRelevantArticlesAction(
         summaryResult.data.keywords,
-        documentId
+        documentId,
+        allowedDomains
+          .split(",")
+          .map(d => d.trim())
+          .filter(d => d),
+        disallowedDomains
+          .split(",")
+          .map(d => d.trim())
+          .filter(d => d)
       )
 
       if (articlesResult.isSuccess) {
@@ -125,8 +136,8 @@ export function SimpleResearchPanel({
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={onToggle}>
-      <SheetTrigger asChild>
+    <Dialog open={isOpen} onOpenChange={onToggle}>
+      <DialogTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -135,17 +146,17 @@ export function SimpleResearchPanel({
           <Search className="mr-2 size-4" />
           Research
         </Button>
-      </SheetTrigger>
-      <SheetContent side="right" className="w-[400px] sm:w-[500px]">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
             <BookOpen className="size-5" />
             Content Research
-          </SheetTitle>
-          <SheetDescription>
+          </DialogTitle>
+          <DialogDescription>
             Analyze your content and find relevant articles
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
         <div className="mt-6 space-y-6">
           {/* Analyze Button */}
@@ -163,6 +174,21 @@ export function SimpleResearchPanel({
             {isAnalyzing ? "Analyzing..." : "Analyze Content & Find Articles"}
           </Button>
 
+          <div className="space-y-2">
+            <Input
+              placeholder="Allowed domains (e.g., .gov, .edu)"
+              value={allowedDomains}
+              onChange={e => setAllowedDomains(e.target.value)}
+              className="text-sm"
+            />
+            <Input
+              placeholder="Disallowed domains (e.g., reddit.com)"
+              value={disallowedDomains}
+              onChange={e => setDisallowedDomains(e.target.value)}
+              className="text-sm"
+            />
+          </div>
+
           {!currentContent.trim() && (
             <div className="py-4 text-center text-gray-500">
               <Sparkles className="mx-auto mb-2 size-8 opacity-50" />
@@ -172,8 +198,8 @@ export function SimpleResearchPanel({
             </div>
           )}
 
-          <ScrollArea className="h-[calc(100vh-250px)]">
-            <div className="space-y-6">
+          <ScrollArea className="h-[60vh]">
+            <div className="space-y-6 pr-4">
               {/* Content Summary */}
               {contentSummary && (
                 <Card>
@@ -190,16 +216,16 @@ export function SimpleResearchPanel({
                     </div>
 
                     <div>
-                      <h4 className="mb-2 font-medium text-gray-900">
+                      <h4 className="text-foreground mb-2 font-medium">
                         Main Points:
                       </h4>
                       <ul className="space-y-2">
                         {contentSummary.mainPoints.map((point, index) => (
                           <li
                             key={index}
-                            className="flex items-start text-sm text-gray-700"
+                            className="text-muted-foreground flex items-start text-sm"
                           >
-                            <span className="mr-2 mt-0.5 text-blue-600">•</span>
+                            <span className="text-primary mr-2 mt-0.5">•</span>
                             <span>{point}</span>
                           </li>
                         ))}
@@ -207,7 +233,7 @@ export function SimpleResearchPanel({
                     </div>
 
                     <div>
-                      <h4 className="mb-2 font-medium text-gray-900">
+                      <h4 className="text-foreground mb-2 font-medium">
                         Keywords:
                       </h4>
                       <div className="flex flex-wrap gap-2">
@@ -270,7 +296,7 @@ export function SimpleResearchPanel({
                           </div>
                         </div>
 
-                        <p className="text-xs leading-relaxed text-gray-600">
+                        <p className="text-muted-foreground text-xs leading-relaxed">
                           {article.summary}
                         </p>
 
@@ -295,7 +321,7 @@ export function SimpleResearchPanel({
             </div>
           </ScrollArea>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   )
 }
