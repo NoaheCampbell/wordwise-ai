@@ -338,4 +338,97 @@ export async function provideSuggestionFeedbackAction(
     console.error("Error providing feedback:", error)
     return { isSuccess: false, message: "Failed to provide feedback" }
   }
+}
+
+/**
+ * Clear all unaccepted suggestions for a document (when starting new analysis)
+ */
+export async function clearDocumentSuggestionsAction(
+  documentId: string
+): Promise<ActionState<void>> {
+  try {
+    const { userId } = await auth()
+    
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    await db
+      .delete(suggestionsTable)
+      .where(
+        and(
+          eq(suggestionsTable.documentId, documentId),
+          eq(suggestionsTable.userId, userId),
+          eq(suggestionsTable.isAccepted, false)
+        )
+      )
+
+    return {
+      isSuccess: true,
+      message: "Document suggestions cleared successfully",
+      data: undefined
+    }
+  } catch (error) {
+    console.error("Error clearing document suggestions:", error)
+    return { isSuccess: false, message: "Failed to clear document suggestions" }
+  }
+}
+
+/**
+ * Get active (unaccepted) suggestions for a document in UI format
+ */
+export async function getActiveSuggestionsForUIAction(
+  documentId: string
+): Promise<ActionState<any[]>> {
+  try {
+    const { userId } = await auth()
+    
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const suggestions = await db.query.suggestions.findMany({
+      where: and(
+        eq(suggestionsTable.documentId, documentId),
+        eq(suggestionsTable.userId, userId),
+        eq(suggestionsTable.isAccepted, false)
+      ),
+      orderBy: (suggestions, { asc }) => [asc(suggestions.startPosition)]
+    })
+
+    // Convert to UI format (AISuggestion format)
+    const uiSuggestions = suggestions.map(suggestion => {
+      const icon = suggestion.type === "spelling" ? "✍️" : suggestion.type === "grammar" ? "🧐" : "✨"
+      const title = suggestion.type === "spelling" 
+        ? "Spelling Correction" 
+        : suggestion.type === "grammar" 
+        ? "Grammar Correction" 
+        : `${suggestion.type.charAt(0).toUpperCase() + suggestion.type.slice(1)} Suggestion`
+
+      return {
+        id: suggestion.id,
+        type: suggestion.type,
+        span: {
+          start: suggestion.startPosition,
+          end: suggestion.endPosition,
+          text: suggestion.originalText
+        },
+        originalText: suggestion.originalText,
+        suggestedText: suggestion.suggestedText,
+        description: suggestion.explanation || "A suggestion for improvement.",
+        confidence: 95, // Default confidence for stored suggestions
+        icon,
+        title
+      }
+    })
+
+    return {
+      isSuccess: true,
+      message: "Active suggestions retrieved successfully",
+      data: uiSuggestions
+    }
+  } catch (error) {
+    console.error("Error getting active suggestions for UI:", error)
+    return { isSuccess: false, message: "Failed to get active suggestions" }
+  }
 } 
