@@ -113,7 +113,7 @@ Content:
 }
 
 /**
- * Find relevant articles using Google search (no API key required)
+ * Find relevant articles using real search APIs
  */
 export async function findRelevantArticlesAction(
   keywords: string[],
@@ -129,102 +129,167 @@ export async function findRelevantArticlesAction(
       return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
     }
 
-    // Create search query from keywords
     const searchQuery = keywords.slice(0, 4).join(" ")
-    const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(searchQuery)}&num=10`
+    const sources: ExternalSource[] = []
 
-    // Use a simple fetch with proper headers to avoid being blocked
-    const response = await fetch(googleSearchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      }
-    })
-
-    if (!response.ok) {
-      // Fallback to DuckDuckGo if Google blocks us
-      const ddgUrl = `https://duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`
-      console.log("Google search failed, trying DuckDuckGo...")
+    // Try multiple free search approaches
+    try {
+      // Method 1: Use Bing Search API (has a free tier)
+      const bingUrl = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=5&responseFilter=Webpages`
       
-      // For now, return some mock results to demonstrate the feature
-      const mockSources: ExternalSource[] = [
-        {
-          title: `Understanding ${keywords[0]}: A Comprehensive Guide`,
-          url: `https://example.com/guide-${keywords[0].toLowerCase().replace(/\s+/g, '-')}`,
-          summary: `Detailed article covering the fundamentals and best practices of ${keywords[0]}.`,
-          snippet: `[Understanding ${keywords[0]}: A Comprehensive Guide](https://example.com/guide-${keywords[0].toLowerCase().replace(/\s+/g, '-')}) - Detailed article covering the fundamentals and best practices.`,
-          keywords: keywords,
-          relevanceScore: 90,
-          sourceType: "article"
-        },
-        {
-          title: `${keywords[1] || keywords[0]} Best Practices for 2024`,
-          url: `https://example.com/best-practices-${keywords[1]?.toLowerCase().replace(/\s+/g, '-') || 'general'}`,
-          summary: `Current trends and strategies for implementing ${keywords[1] || keywords[0]} effectively.`,
-          snippet: `[${keywords[1] || keywords[0]} Best Practices for 2024](https://example.com/best-practices) - Current trends and strategies for effective implementation.`,
-          keywords: keywords,
-          relevanceScore: 85,
-          sourceType: "article"
-        },
-        {
-          title: `Common Mistakes in ${keywords[0]} (And How to Avoid Them)`,
-          url: `https://example.com/mistakes-${keywords[0].toLowerCase().replace(/\s+/g, '-')}`,
-          summary: `Learn from common pitfalls and discover proven strategies to improve your ${keywords[0]} approach.`,
-          snippet: `[Common Mistakes in ${keywords[0]}](https://example.com/mistakes) - Learn from common pitfalls and discover proven strategies.`,
-          keywords: keywords,
-          relevanceScore: 80,
-          sourceType: "article"
-        }
-      ]
-
-      // Save sources to database if documentId provided
-      if (documentId && mockSources.length > 0) {
-        const savePromises = mockSources.map(source => 
-          createResearchSourceAction({
-            documentId,
-            title: source.title,
-            url: source.url,
-            summary: source.summary,
-            snippet: source.snippet,
-            keywords: source.keywords,
-            relevanceScore: source.relevanceScore,
-            sourceType: source.sourceType
-          })
-        )
+      // Method 2: Use DuckDuckGo Instant Answer API (free)
+      const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(searchQuery)}&format=json&no_html=1&skip_disambig=1`
+      
+      try {
+        const ddgResponse = await fetch(ddgUrl)
+        const ddgData = await ddgResponse.json()
         
-        // Execute saves in parallel but don't wait for completion
-        Promise.all(savePromises).catch(error => {
-          console.error("Error saving research sources:", error)
-        })
+        if (ddgData && ddgData.RelatedTopics && ddgData.RelatedTopics.length > 0) {
+          ddgData.RelatedTopics.slice(0, 3).forEach((topic: any, index: number) => {
+            if (topic.FirstURL && topic.Text) {
+              sources.push({
+                title: topic.Text.substring(0, 100) + (topic.Text.length > 100 ? "..." : ""),
+                url: topic.FirstURL,
+                summary: topic.Text.substring(0, 200) + (topic.Text.length > 200 ? "..." : ""),
+                snippet: `[${topic.Text.substring(0, 50)}...](${topic.FirstURL})`,
+                keywords: keywords,
+                relevanceScore: 85 - (index * 5),
+                sourceType: "article"
+              })
+            }
+          })
+        }
+      } catch (ddgError) {
+        console.log("DuckDuckGo API failed, trying alternative approach")
       }
 
-      return {
-        isSuccess: true,
-        message: "Found relevant articles (demo mode - implement real search as needed)",
-        data: mockSources
+      // Method 3: If no results yet, use Wikipedia API for educational content
+      if (sources.length === 0) {
+        const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/search?q=${encodeURIComponent(searchQuery)}&limit=3`
+        
+        try {
+          const wikiResponse = await fetch(wikiUrl)
+          if (wikiResponse.ok) {
+            const wikiData = await wikiResponse.json()
+            
+            if (wikiData.pages && wikiData.pages.length > 0) {
+              wikiData.pages.forEach((page: any, index: number) => {
+                sources.push({
+                  title: page.title,
+                  url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.key)}`,
+                  summary: page.description || page.excerpt || `Wikipedia article about ${page.title}`,
+                  snippet: `[${page.title}](https://en.wikipedia.org/wiki/${encodeURIComponent(page.key)}) - ${page.description || 'Wikipedia article'}`,
+                  keywords: keywords,
+                  relevanceScore: 90 - (index * 5),
+                  sourceType: "wikipedia"
+                })
+              })
+            }
+          }
+        } catch (wikiError) {
+          console.log("Wikipedia API failed")
+        }
       }
+
+      // Method 4: Use Hacker News Search API for tech-related content
+      if (sources.length < 3) {
+        const hnUrl = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchQuery)}&tags=story&hitsPerPage=2`
+        
+        try {
+          const hnResponse = await fetch(hnUrl)
+          if (hnResponse.ok) {
+            const hnData = await hnResponse.json()
+            
+            if (hnData.hits && hnData.hits.length > 0) {
+              hnData.hits.forEach((hit: any, index: number) => {
+                if (hit.url) {
+                  sources.push({
+                    title: hit.title,
+                    url: hit.url,
+                    summary: hit.url.includes('github.com') ? `GitHub repository: ${hit.title}` : `Article: ${hit.title}`,
+                    snippet: `[${hit.title}](${hit.url}) - Discussed on Hacker News`,
+                    keywords: keywords,
+                    relevanceScore: 80 - (index * 5),
+                    sourceType: "news"
+                  })
+                }
+              })
+            }
+          }
+        } catch (hnError) {
+          console.log("Hacker News API failed")
+        }
+      }
+
+      // Method 5: Use Reddit Search API for community discussions
+      if (sources.length < 4) {
+        const redditUrl = `https://www.reddit.com/search.json?q=${encodeURIComponent(searchQuery)}&limit=2&sort=relevance`
+        
+        try {
+          const redditResponse = await fetch(redditUrl, {
+            headers: {
+              'User-Agent': 'WordWise-Research-Bot/1.0'
+            }
+          })
+          if (redditResponse.ok) {
+            const redditData = await redditResponse.json()
+            
+            if (redditData.data && redditData.data.children && redditData.data.children.length > 0) {
+              redditData.data.children.forEach((child: any, index: number) => {
+                const post = child.data
+                if (post.url && !post.url.includes('reddit.com')) {
+                  sources.push({
+                    title: post.title,
+                    url: post.url,
+                    summary: post.selftext ? post.selftext.substring(0, 200) + "..." : `Discussion: ${post.title}`,
+                    snippet: `[${post.title}](${post.url}) - From r/${post.subreddit}`,
+                    keywords: keywords,
+                    relevanceScore: 75 - (index * 5),
+                    sourceType: "discussion"
+                  })
+                }
+              })
+            }
+          }
+        } catch (redditError) {
+          console.log("Reddit API failed")
+        }
+      }
+
+    } catch (apiError) {
+      console.error("All search APIs failed:", apiError)
+      return { isSuccess: false, message: "Unable to search for articles at this time. Please try again later." }
     }
 
-    // If we get here, we successfully fetched from Google
-    // For now, return demo results - real parsing would go here
-    const sources: ExternalSource[] = keywords.slice(0, 3).map((keyword, index) => ({
-      title: `${keyword}: Expert Insights and Analysis`,
-      url: `https://example.com/article-${index + 1}`,
-      summary: `Professional analysis and insights about ${keyword} with practical applications.`,
-      snippet: `[${keyword}: Expert Insights](https://example.com/article-${index + 1}) - Professional analysis and insights with practical applications.`,
-      keywords: keywords,
-      relevanceScore: 85 - (index * 5),
-      sourceType: "article"
-    }))
+    // If we still have no sources, return an error
+    if (sources.length === 0) {
+      return { isSuccess: false, message: "No relevant articles found. Try using different keywords or topics." }
+    }
+
+    // Save sources to database if documentId provided
+    if (documentId && sources.length > 0) {
+      const savePromises = sources.map(source => 
+        createResearchSourceAction({
+          documentId,
+          title: source.title,
+          url: source.url,
+          summary: source.summary,
+          snippet: source.snippet,
+          keywords: source.keywords,
+          relevanceScore: source.relevanceScore,
+          sourceType: source.sourceType
+        })
+      )
+      
+      // Execute saves in parallel but don't wait for completion
+      Promise.all(savePromises).catch(error => {
+        console.error("Error saving research sources:", error)
+      })
+    }
 
     return {
       isSuccess: true,
-      message: "Found relevant articles successfully",
+      message: `Found ${sources.length} relevant articles from multiple sources`,
       data: sources
     }
   } catch (error) {

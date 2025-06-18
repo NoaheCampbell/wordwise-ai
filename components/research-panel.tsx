@@ -319,7 +319,7 @@ export function ResearchPanel({
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <Button
-                      onClick={handleFindSources}
+                      onClick={handleAnalyzeContent}
                       disabled={isSearching || !currentContent.trim()}
                       className="w-full"
                       size="sm"
@@ -329,7 +329,7 @@ export function ResearchPanel({
                       ) : (
                         <Search className="mr-2 size-4" />
                       )}
-                      Find External Sources
+                      Analyze & Find Articles
                     </Button>
 
                     <div className="flex gap-2">
