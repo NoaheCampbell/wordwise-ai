@@ -149,7 +149,7 @@ export function SimpleResearchPanel({
         </DialogTrigger>
       )}
       <DialogContent
-        className="flex max-w-2xl flex-col"
+        className="flex w-[90vw] max-w-4xl flex-col overflow-hidden"
         style={{ maxHeight: "90vh" }}
       >
         <DialogHeader>
@@ -162,7 +162,7 @@ export function SimpleResearchPanel({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="flex flex-1 flex-col space-y-4 overflow-hidden">
           {/* Analyze Button */}
           <Button
             onClick={handleFindArticles}
@@ -204,7 +204,7 @@ export function SimpleResearchPanel({
             </div>
           )}
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 overflow-auto">
             <div className="space-y-6 pr-4">
               {/* Content Summary */}
               {contentSummary && (
@@ -216,7 +216,7 @@ export function SimpleResearchPanel({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-sm text-blue-900">
+                      <p className="whitespace-pre-wrap break-words text-sm text-blue-900">
                         {contentSummary.summary}
                       </p>
                     </div>
@@ -231,8 +231,10 @@ export function SimpleResearchPanel({
                             key={index}
                             className="text-muted-foreground flex items-start text-sm"
                           >
-                            <span className="text-primary mr-2 mt-0.5">•</span>
-                            <span>{point}</span>
+                            <span className="text-primary mr-2 mt-0.5 shrink-0">
+                              •
+                            </span>
+                            <span className="break-words">{point}</span>
                           </li>
                         ))}
                       </ul>
