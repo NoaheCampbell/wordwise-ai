@@ -220,6 +220,22 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     [deepHighlights, realTimeHighlights]
   )
 
+  // Track current selection for UI state
+  const [hasSelection, setHasSelection] = useState(false)
+
+  // Update selection state based on current selection
+  const updateSelectionState = useCallback(() => {
+    const selection = window.getSelection()
+    if (selection && selection.rangeCount > 0 && textareaRef.current) {
+      const range = selection.getRangeAt(0)
+      // Check if selection is within our editor and not collapsed
+      const isWithinEditor = textareaRef.current.contains(selection.anchorNode)
+      setHasSelection(isWithinEditor && !range.collapsed)
+    } else {
+      setHasSelection(false)
+    }
+  }, [])
+
   const getCursorPosition = (element: Node | null): number => {
     if (!element) return 0
     const selection = window.getSelection()
@@ -445,6 +461,26 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   useEffect(() => {
     registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
   }, [registerSuggestionCallbacks, highlights])
+
+  // Set up selection change listeners
+  useEffect(() => {
+    const handleGlobalSelectionChange = () => {
+      updateSelectionState()
+    }
+
+    // Listen for selection changes on the global document
+    if (typeof window !== "undefined" && window.document) {
+      const globalDoc = window.document
+      globalDoc.addEventListener("selectionchange", handleGlobalSelectionChange)
+
+      return () => {
+        globalDoc.removeEventListener(
+          "selectionchange",
+          handleGlobalSelectionChange
+        )
+      }
+    }
+  }, [updateSelectionState])
 
   useEffect(() => {
     const sortedSuggestions = highlights
@@ -1536,28 +1572,18 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       }
     }
 
-    // Only update cursor position if there's no active selection
+    // Update selection state
+    updateSelectionState()
+
+    // Update cursor position
     const selection = window.getSelection()
     if (selection && selection.rangeCount > 0 && textareaRef.current) {
       const range = selection.getRangeAt(0)
-
-      // If the selection is collapsed (just a cursor), update the cursor position
-      if (range.collapsed) {
-        const preCaretRange = range.cloneRange()
-        preCaretRange.selectNodeContents(textareaRef.current)
-        preCaretRange.setEnd(range.endContainer, range.endOffset)
-        const newCursorPos = preCaretRange.toString().length
-        lastCursorPosition.current = newCursorPos
-      }
-      // If there's an actual selection (not collapsed), don't interfere with it
-      // Just update the cursor position for tracking purposes but don't call setCursorPosition
-      else {
-        const preCaretRange = range.cloneRange()
-        preCaretRange.selectNodeContents(textareaRef.current)
-        preCaretRange.setEnd(range.endContainer, range.endOffset)
-        const newCursorPos = preCaretRange.toString().length
-        lastCursorPosition.current = newCursorPos
-      }
+      const preCaretRange = range.cloneRange()
+      preCaretRange.selectNodeContents(textareaRef.current)
+      preCaretRange.setEnd(range.endContainer, range.endOffset)
+      const newCursorPos = preCaretRange.toString().length
+      lastCursorPosition.current = newCursorPos
     }
   }
 
@@ -1919,174 +1945,201 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
         {/* Unified AI Enhancement Controls */}
         <div className="flex flex-nowrap items-center gap-1">
-          {/* Quick Tone Adjustments */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
-              >
-                🎨 Quick Tone
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuLabel>Basic Tones</DropdownMenuLabel>
-              {[
-                "Professional",
-                "Casual",
-                "Friendly",
-                "Persuasive",
-                "Direct"
-              ].map(t => (
-                <DropdownMenuItem
-                  key={t}
-                  onSelect={e => {
-                    e.preventDefault()
-                    handleRewrite(t)
-                  }}
-                >
-                  {t}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Specialized</DropdownMenuLabel>
-              {CLARITY_TONES.slice(0, 3).map(t => (
-                <DropdownMenuItem
-                  key={t}
-                  onSelect={e => {
-                    e.preventDefault()
-                    handleRewrite(t)
-                  }}
-                >
-                  {t}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Show helper text when no selection, otherwise show buttons */}
+          {!hasSelection && highlights.length === 0 ? (
+            <div className="flex items-center gap-1 px-2 py-1.5 text-xs italic text-gray-500">
+              💡 Select text to unlock AI enhancements
+            </div>
+          ) : (
+            <>
+              {/* Quick Tone Adjustments */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isRewriting || !hasSelection}
+                    className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm disabled:opacity-50"
+                    title={
+                      !hasSelection
+                        ? "Select text first to use tone adjustments"
+                        : "Adjust tone of selected text"
+                    }
+                  >
+                    🎨 Quick Tone
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>Basic Tones</DropdownMenuLabel>
+                  {[
+                    "Professional",
+                    "Casual",
+                    "Friendly",
+                    "Persuasive",
+                    "Direct"
+                  ].map(t => (
+                    <DropdownMenuItem
+                      key={t}
+                      onSelect={e => {
+                        e.preventDefault()
+                        handleRewrite(t)
+                      }}
+                    >
+                      {t}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Specialized</DropdownMenuLabel>
+                  {CLARITY_TONES.slice(0, 3).map(t => (
+                    <DropdownMenuItem
+                      key={t}
+                      onSelect={e => {
+                        e.preventDefault()
+                        handleRewrite(t)
+                      }}
+                    >
+                      {t}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          {/* Advanced AI Enhancements */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap border-blue-200 bg-blue-50 px-2 py-1 text-sm text-blue-700 hover:bg-blue-100"
-              >
-                ✨ AI Enhance
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56">
-              <DropdownMenuLabel>📧 Subject Lines</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleSubjectLineImprovement("improve")
-                }}
-              >
-                ✨ Improve for Open Rates
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleSubjectLineImprovement("ab_test")
-                }}
-              >
-                🔬 Generate A/B Variations
-              </DropdownMenuItem>
+              {/* Advanced AI Enhancements */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isRewriting || !hasSelection}
+                    className="flex items-center gap-1 whitespace-nowrap border-blue-200 bg-blue-50 px-2 py-1 text-sm text-blue-700 hover:bg-blue-100 disabled:bg-gray-50 disabled:opacity-50"
+                    title={
+                      !hasSelection
+                        ? "Select text first to use AI enhancements"
+                        : "Enhance selected text with AI"
+                    }
+                  >
+                    ✨ AI Enhance
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56">
+                  <div className="border-b p-2 text-xs text-gray-600">
+                    💡 Works best when you select the specific part to enhance
+                  </div>
+                  <DropdownMenuLabel>📧 Subject Lines</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleSubjectLineImprovement("improve")
+                    }}
+                  >
+                    ✨ Improve for Open Rates
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleSubjectLineImprovement("ab_test")
+                    }}
+                  >
+                    🔬 Generate A/B Variations
+                  </DropdownMenuItem>
 
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>🔥 Call-to-Actions</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleCTAImprovement("improve")
-                }}
-              >
-                ⚡ Boost Conversions
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleCTAImprovement("variations")
-                }}
-              >
-                🔄 5 CTA Variations
-              </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>🔥 Call-to-Actions</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleCTAImprovement("improve")
+                    }}
+                  >
+                    ⚡ Boost Conversions
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleCTAImprovement("variations")
+                    }}
+                  >
+                    🔄 5 CTA Variations
+                  </DropdownMenuItem>
 
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>✍️ Content Quality</DropdownMenuLabel>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleBodyContentImprovement("improve_engagement")
-                }}
-              >
-                🎭 Improve Engagement
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleBodyContentImprovement("shorten")
-                }}
-              >
-                ✂️ Make Concise
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleBodyContentImprovement("structure")
-                }}
-              >
-                🏗️ Better Structure
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>✍️ Content Quality</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleBodyContentImprovement("improve_engagement")
+                    }}
+                  >
+                    🎭 Improve Engagement
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleBodyContentImprovement("shorten")
+                    }}
+                  >
+                    ✂️ Make Concise
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleBodyContentImprovement("structure")
+                    }}
+                  >
+                    🏗️ Better Structure
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
 
-          {/* Content Extension */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap border-orange-200 bg-orange-50 px-2 py-1 text-sm text-orange-700 hover:bg-orange-100"
-              >
-                ➕ Extend
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleContentExtension("continue")
-                }}
-              >
-                ▶️ Continue Writing
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleContentExtension("precede")
-                }}
-              >
-                ◀️ Add Introduction
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={e => {
-                  e.preventDefault()
-                  handleContentExtension("expand_section")
-                }}
-              >
-                🔍 Expand Details
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              {/* Content Extension */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isRewriting || !hasSelection}
+                    className="flex items-center gap-1 whitespace-nowrap border-orange-200 bg-orange-50 px-2 py-1 text-sm text-orange-700 hover:bg-orange-100 disabled:bg-gray-50 disabled:opacity-50"
+                    title={
+                      !hasSelection
+                        ? "Select text first to extend content"
+                        : "Extend selected content"
+                    }
+                  >
+                    ➕ Extend
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleContentExtension("continue")
+                    }}
+                  >
+                    ▶️ Continue Writing
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleContentExtension("precede")
+                    }}
+                  >
+                    ◀️ Add Introduction
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleContentExtension("expand_section")
+                    }}
+                  >
+                    🔍 Expand Details
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          )}
         </div>
 
         {highlights.length > 0 && (
@@ -2128,8 +2181,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           contentEditable
           suppressContentEditableWarning={true}
           onKeyDown={handleKeyDown}
+          onKeyUp={updateSelectionState}
           onInput={handleInput}
           onClick={handleSelectionChange}
+          onMouseUp={updateSelectionState}
           onBlur={() => {
             if (textareaRef.current) {
               const newContent = textareaRef.current.innerText || ""
@@ -2138,6 +2193,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 setContentForWordCount(newContent)
               }
             }
+            updateSelectionState()
           }}
           className="m-0 size-full resize-none border-none bg-transparent p-0 text-base font-normal leading-relaxed text-gray-900 outline-none focus:outline-none"
           style={{
