@@ -15,6 +15,7 @@ import {
   InsertResearchSource,
   SelectResearchSource,
   researchSourcesTable,
+  documentsTable,
 } from "@/db/schema"
 import { ActionState } from "@/types"
 import { eq, and, desc, count, like, sql } from "drizzle-orm"

@@ -41,6 +41,7 @@ import {
   createIdeaAction,
   deleteIdeaAction
 } from "@/actions/db/ideas-actions"
+import { convertIdeaToDocumentAction } from "@/actions/research-ideation-actions"
 
 // Types
 import { SelectIdea } from "@/db/schema"
@@ -173,7 +174,30 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
   }
 
   const handleConvertToDocument = async (idea: SelectIdea) => {
-    toast.info("Document conversion coming soon!")
+    if (!user) return
+
+    setIsConverting(idea.id)
+    try {
+      const result = await convertIdeaToDocumentAction(
+        idea.id,
+        idea.title || idea.content.slice(0, 50),
+        idea.content,
+        idea.type
+      )
+
+      if (result.isSuccess) {
+        toast.success("Idea converted to document!")
+        setIsOpen(false) // Close dialog
+        router.push(`/document/${result.data.documentId}`)
+      } else {
+        toast.error("Failed to convert idea")
+      }
+    } catch (error) {
+      console.error("Error converting idea:", error)
+      toast.error("Failed to convert idea")
+    } finally {
+      setIsConverting(null)
+    }
   }
 
   const handleDeleteIdea = async (ideaId: string) => {

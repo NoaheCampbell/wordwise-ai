@@ -633,13 +633,170 @@ export async function convertIdeaToDocumentAction(
     let documentTitle = ideaTitle
 
     if (ideaType === "headline") {
-      documentContent = `# ${ideaTitle}\n\n${ideaContent}\n\n<!-- Add your content here -->`
+      documentContent = `# ${ideaTitle}
+
+## Introduction
+${ideaContent}
+
+<!-- Expand on the headline with compelling opening that hooks the reader -->
+
+## Key Points
+- <!-- Main argument or insight #1 -->
+- <!-- Supporting evidence or example -->
+- <!-- Main argument or insight #2 -->
+- <!-- Supporting evidence or example -->
+- <!-- Main argument or insight #3 -->
+- <!-- Supporting evidence or example -->
+
+## Evidence & Research
+<!-- Add credible sources, statistics, expert quotes, or case studies that support your headline -->
+
+## Implications
+<!-- Discuss what this means for your audience - why should they care? -->
+
+## Conclusion
+<!-- Tie everything together and reinforce the main message from your headline -->
+
+## Call to Action
+<!-- What do you want readers to do after reading this? -->
+
+---
+*Research sources will be automatically added below as you find them.*`
     } else if (ideaType === "topic_suggestion") {
-      documentContent = `# ${ideaTitle}\n\n## Overview\n${ideaContent}\n\n## Key Points\n\n<!-- Add key points here -->\n\n## Research Notes\n\n<!-- Add research notes here -->`
+      documentContent = `# ${ideaTitle}
+
+## Executive Summary
+${ideaContent}
+
+<!-- Provide a comprehensive overview of this topic in 2-3 paragraphs -->
+
+## Background & Context
+<!-- Historical context, current state, why this topic matters now -->
+
+## Key Themes & Trends
+### Theme 1: [Insert Theme]
+<!-- Analysis of first major theme -->
+
+### Theme 2: [Insert Theme]  
+<!-- Analysis of second major theme -->
+
+### Theme 3: [Insert Theme]
+<!-- Analysis of third major theme -->
+
+## Stakeholders & Perspectives
+### Primary Stakeholders
+- <!-- Who is most affected by this topic? -->
+- <!-- What are their interests and concerns? -->
+
+### Secondary Stakeholders
+- <!-- Who else has a stake in this topic? -->
+- <!-- How might they be impacted? -->
+
+## Current Challenges & Opportunities
+### Challenges
+- <!-- Major obstacle #1 -->
+- <!-- Major obstacle #2 -->
+- <!-- Major obstacle #3 -->
+
+### Opportunities
+- <!-- Potential solution or opportunity #1 -->
+- <!-- Potential solution or opportunity #2 -->
+- <!-- Potential solution or opportunity #3 -->
+
+## Future Outlook
+<!-- Where is this topic heading? What changes do you anticipate? -->
+
+## Recommendations
+1. <!-- Actionable recommendation #1 -->
+2. <!-- Actionable recommendation #2 -->
+3. <!-- Actionable recommendation #3 -->
+
+---
+*Research sources will be automatically added below as you find them.*`
     } else if (ideaType === "outline") {
-      documentContent = `# ${ideaTitle}\n\n## Outline\n${ideaContent}\n\n## Content\n\n<!-- Expand on each section of the outline -->`
+      // If the content already looks like an outline, expand it intelligently
+      if (ideaContent.includes('\n-') || ideaContent.includes('\n•') || ideaContent.includes('\n1.')) {
+        documentContent = `# ${ideaTitle}
+
+## Detailed Outline
+${ideaContent}
+
+---
+
+## Expanded Content
+
+<!-- For each section in your outline above, expand it below: -->
+
+${ideaContent.split('\n').filter(line => line.trim().length > 0).map(line => {
+  const cleanLine = line.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim()
+  if (cleanLine) {
+    return `### ${cleanLine}\n<!-- Expand on: ${cleanLine} -->\n<!-- Add details, examples, evidence, and analysis here -->\n`
+  }
+  return ''
+}).join('\n')}
+
+## Supporting Research
+<!-- Add research findings, data, and sources that support each section -->
+
+## Conclusion
+<!-- Synthesize the key insights from all sections above -->
+
+---
+*Research sources will be automatically added below as you find them.*`
+      } else {
+        // Generic outline template
+        documentContent = `# ${ideaTitle}
+
+## Initial Framework
+${ideaContent}
+
+## Detailed Structure
+
+### Section 1: [Title]
+<!-- Develop the first major section -->
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+### Section 2: [Title]  
+<!-- Develop the second major section -->
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+### Section 3: [Title]
+<!-- Develop the third major section -->
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+## Research Requirements
+<!-- What information do you need to gather to support this outline? -->
+
+## Next Steps
+1. <!-- First development priority -->
+2. <!-- Second development priority -->
+3. <!-- Third development priority -->
+
+---
+*Research sources will be automatically added below as you find them.*`
+      }
     } else {
-      documentContent = `# ${ideaTitle}\n\n${ideaContent}\n\n<!-- Add your content here -->`
+      documentContent = `# ${ideaTitle}
+
+${ideaContent}
+
+## Development Notes
+<!-- Use this space to expand on your initial idea -->
+
+## Research & Evidence
+<!-- Add supporting information, sources, and data -->
+
+## Next Steps
+<!-- What actions need to be taken to develop this further? -->
+
+---
+*Research sources will be automatically added below as you find them.*`
     }
 
     // Create the document first
