@@ -122,12 +122,14 @@ export async function getDocumentAction(
 export async function updateDocumentAction(
   id: string,
   data: Partial<InsertDocument>,
-  userId: string
+  userId: string,
+  skipAnalysis: boolean = true
 ): Promise<ActionState<SelectDocument>> {
   try {
     const docToUpdate: Partial<InsertDocument> = { ...data }
 
-    if (docToUpdate.content && docToUpdate.content.trim().length > 0) {
+    // Skip expensive AI analysis by default for faster saves
+    if (!skipAnalysis && docToUpdate.content && docToUpdate.content.trim().length > 0) {
       const analysisResult = await summarizeContentAction(docToUpdate.content)
       if (analysisResult.isSuccess) {
         docToUpdate.analysis = analysisResult.data
@@ -168,6 +170,14 @@ export async function updateDocumentAction(
       return { isSuccess: false, message: "Document not found" }
     }
 
+    // Run analysis in background after save (fire-and-forget)
+    if (skipAnalysis && docToUpdate.content && docToUpdate.content.trim().length > 0) {
+      // Don't await - let it run in background
+      updateDocumentAnalysisInBackground(id, docToUpdate.content).catch(error => {
+        console.warn("Background analysis failed:", error)
+      })
+    }
+
     return {
       isSuccess: true,
       message: "Document updated successfully",
@@ -176,6 +186,44 @@ export async function updateDocumentAction(
   } catch (error) {
     console.error("Error updating document:", error)
     return { isSuccess: false, message: "Failed to update document" }
+  }
+}
+
+// Background analysis function
+async function updateDocumentAnalysisInBackground(id: string, content: string) {
+  try {
+    const docToUpdate: Partial<InsertDocument> = {}
+
+    const analysisResult = await summarizeContentAction(content)
+    if (analysisResult.isSuccess) {
+      docToUpdate.analysis = analysisResult.data
+    }
+
+    const currentDoc = await db.query.documents.findFirst({
+      where: eq(documentsTable.id, id)
+    })
+
+    if (currentDoc) {
+      const docForAnalysis = {
+        ...currentDoc,
+        content
+      }
+      const enhancedAnalysisResult =
+        await analyzeDocumentForEnhancedIdeasAction(docForAnalysis)
+      if (enhancedAnalysisResult.isSuccess) {
+        docToUpdate.enhancedAnalysis = enhancedAnalysisResult.data
+      }
+    }
+
+    // Update with analysis data only
+    if (Object.keys(docToUpdate).length > 0) {
+      await db
+        .update(documentsTable)
+        .set(docToUpdate)
+        .where(eq(documentsTable.id, id))
+    }
+  } catch (error) {
+    console.error("Background analysis error:", error)
   }
 }
 
