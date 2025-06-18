@@ -8,13 +8,131 @@ import { eq } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 import readability from "text-readability-ts"
 import { createSuggestionAction } from "@/actions/db/suggestions-actions"
+import { getTemplate, populateTemplate } from "@/prompts/ai-prompt-templates"
+import crypto from "crypto"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+// Cache for AI responses - in production, consider using Redis or similar
+const responseCache = new Map<string, { response: any; timestamp: number }>()
+const CACHE_DURATION = 30 * 60 * 1000 // 30 minutes in milliseconds
+
+// Safety constants
+const MAX_INPUT_LENGTH = 50000 // Max characters
+const MAX_OUTPUT_TOKENS = 2000 // Max tokens for output
+const MIN_INPUT_LENGTH = 10 // Minimum meaningful input
+
+// Rate limiting (simple in-memory implementation)
+const rateLimiter = new Map<string, { count: number; resetTime: number }>()
+const RATE_LIMIT_MAX = 60 // Max requests per hour
+const RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour in milliseconds
+
+/**
+ * Generate cache key from text and mode
+ */
+function generateCacheKey(text: string, mode: string, additionalParams?: any): string {
+  const content = JSON.stringify({ text: text.trim(), mode, ...additionalParams })
+  return crypto.createHash('sha256').update(content).digest('hex')
+}
+
+/**
+ * Check and enforce rate limits
+ */
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const userLimit = rateLimiter.get(userId)
+  
+  if (!userLimit || now > userLimit.resetTime) {
+    rateLimiter.set(userId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW })
+    return true
+  }
+  
+  if (userLimit.count >= RATE_LIMIT_MAX) {
+    return false
+  }
+  
+  userLimit.count++
+  return true
+}
+
+/**
+ * Validate input text for safety
+ */
+function validateInput(text: string): { isValid: boolean; message?: string } {
+  if (!text || typeof text !== 'string') {
+    return { isValid: false, message: "Invalid input: text must be a string" }
+  }
+  
+  const trimmedText = text.trim()
+  
+  if (trimmedText.length < MIN_INPUT_LENGTH) {
+    return { isValid: false, message: `Text must be at least ${MIN_INPUT_LENGTH} characters long` }
+  }
+  
+  if (trimmedText.length > MAX_INPUT_LENGTH) {
+    return { isValid: false, message: `Text exceeds maximum length of ${MAX_INPUT_LENGTH} characters` }
+  }
+  
+  // Basic unsafe content detection (you can extend this)
+  const unsafePatterns = [
+    /\b(hack|exploit|malware|virus)\b/i,
+    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+    /javascript:/gi
+  ]
+  
+  for (const pattern of unsafePatterns) {
+    if (pattern.test(trimmedText)) {
+      return { isValid: false, message: "Input contains potentially unsafe content" }
+    }
+  }
+  
+  return { isValid: true }
+}
+
+/**
+ * Enforce sentence boundaries for text operations
+ */
+function enforceSentenceBoundary(originalText: string, selectedText: string): string {
+  // If selected text doesn't end with sentence punctuation, extend to include it
+  const sentenceEnders = /[.!?]/
+  if (!sentenceEnders.test(selectedText.trim())) {
+    const startIndex = originalText.indexOf(selectedText)
+    if (startIndex !== -1) {
+      const afterSelection = originalText.slice(startIndex + selectedText.length)
+      const nextSentenceEnd = afterSelection.search(sentenceEnders)
+      if (nextSentenceEnd !== -1) {
+        return selectedText + afterSelection.slice(0, nextSentenceEnd + 1)
+      }
+    }
+  }
+  return selectedText
+}
+
+/**
+ * Truncate text at sentence boundaries to respect token limits
+ */
+function truncateAtSentenceBoundary(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text
+  
+  const truncated = text.slice(0, maxLength)
+  const lastSentenceEnd = Math.max(
+    truncated.lastIndexOf('.'),
+    truncated.lastIndexOf('!'),
+    truncated.lastIndexOf('?')
+  )
+  
+  if (lastSentenceEnd > maxLength * 0.5) {
+    return truncated.slice(0, lastSentenceEnd + 1)
+  }
+  
+  return truncated
+}
+
+
+
 function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>, context?: string): { start: number; end: number } | null {
-  console.log('Finding text span for:', { searchText, context, fullText: fullText.substring(0, 100) + '...' })
   
   // Function to check if a position has valid word boundaries
   const hasWordBoundary = (text: string, pos: number, searchLength: number) => {
@@ -26,7 +144,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
 
   // First attempt: Use context for precise positioning
   if (context && context.length > searchText.length) {
-    console.log('Using context-based search')
     
     // Find all possible context matches
     let contextSearchFrom = 0
@@ -41,7 +158,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
         // Check if this position is available and has proper boundaries
         if (!usedPositions.has(absoluteIndex) && 
             hasWordBoundary(fullText, absoluteIndex, searchText.length)) {
-          console.log('Found via context at position:', absoluteIndex)
           usedPositions.add(absoluteIndex)
           return { start: absoluteIndex, end: absoluteIndex + searchText.length }
         }
@@ -61,7 +177,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
     // Check if this position is available and has proper word boundaries
     if (!usedPositions.has(foundPos) && 
         hasWordBoundary(fullText, foundPos, searchText.length)) {
-      console.log('Found via direct search at position:', foundPos)
       usedPositions.add(foundPos)
       return { start: foundPos, end: foundPos + searchText.length }
     }
@@ -76,7 +191,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
     if (foundPos === -1) break
 
     if (!usedPositions.has(foundPos)) {
-      console.log('Found via relaxed search at position:', foundPos)
       usedPositions.add(foundPos)
       return { start: foundPos, end: foundPos + searchText.length }
     }
@@ -154,19 +268,33 @@ export async function analyzeTextAction(
 
     const { text, analysisTypes } = request
     
-    if (!text || text.trim().length === 0) {
+    // Apply safety validation
+    const validation = validateInput(text)
+    if (!validation.isValid) {
       return {
         isSuccess: false,
-        message: "No text provided for analysis"
+        message: validation.message!
       }
     }
 
-    const combinedPrompt = generateCombinedPrompt(text, analysisTypes)
+    // Check rate limits for authenticated users
+    const { userId: authUserId } = await auth()
+    if (authUserId && !checkRateLimit(authUserId)) {
+      return {
+        isSuccess: false,
+        message: "Rate limit exceeded. Please try again later."
+      }
+    }
+
+    // Truncate text at sentence boundaries if too long
+    const processedText = truncateAtSentenceBoundary(text, MAX_INPUT_LENGTH)
+    const combinedPrompt = generateCombinedPrompt(processedText, analysisTypes)
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: combinedPrompt }],
       temperature: 0.2,
+      max_tokens: MAX_OUTPUT_TOKENS,
       response_format: { type: "json_object" },
     })
 
@@ -267,7 +395,9 @@ export async function analyzeTextAction(
 }
 
 export async function analyzeTextInParallelAction(
-  request: AnalyzeTextRequest
+  request: AnalyzeTextRequest,
+  documentId?: string,
+  saveSuggestions: boolean = false
 ): Promise<ActionState<AnalysisResult>> {
   try {
     const { text, analysisTypes } = request
@@ -285,7 +415,11 @@ export async function analyzeTextInParallelAction(
       const trimOffset = sentence.indexOf(trimmedSentence)
       offset += sentence.length
 
-      return analyzeTextAction({ text: trimmedSentence, analysisTypes }).then(result => {
+      return analyzeTextAction(
+        { text: trimmedSentence, analysisTypes },
+        documentId,
+        saveSuggestions
+      ).then(result => {
         if (result.isSuccess && result.data) {
           result.data.overallSuggestions.forEach(suggestion => {
             if (suggestion.span) {
@@ -316,6 +450,265 @@ export async function analyzeTextInParallelAction(
   } catch (error) {
     console.error("Error in parallel text analysis:", error)
     return { isSuccess: false, message: "Failed to analyze text in parallel" }
+  }
+}
+
+/**
+ * Enhanced AI handler with caching and safety guards
+ */
+async function callAIWithCache(
+  prompt: string,
+  mode: string,
+  userId: string,
+  additionalParams?: any
+): Promise<ActionState<string>> {
+  try {
+    // Check rate limit
+    if (!checkRateLimit(userId)) {
+      return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
+    }
+
+    // Generate cache key
+    const cacheKey = generateCacheKey(prompt, mode, additionalParams)
+    
+    // Check cache first
+    const cached = responseCache.get(cacheKey)
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return { isSuccess: true, message: "Response retrieved from cache", data: cached.response }
+    }
+
+    // Make API call
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: mode === "creative" ? 0.7 : 0.3,
+      max_tokens: MAX_OUTPUT_TOKENS,
+    })
+
+    const content = response.choices[0]?.message?.content?.trim()
+    if (!content) {
+      return { isSuccess: false, message: "No response generated" }
+    }
+
+    // Cache the response
+    responseCache.set(cacheKey, { response: content, timestamp: Date.now() })
+
+    // Clean up old cache entries periodically
+    if (responseCache.size > 1000) {
+      const now = Date.now()
+      for (const [key, value] of responseCache.entries()) {
+        if (now - value.timestamp > CACHE_DURATION) {
+          responseCache.delete(key)
+        }
+      }
+    }
+
+    return { isSuccess: true, message: "AI response generated", data: content }
+  } catch (error) {
+    console.error("Error calling AI with cache:", error)
+    return { isSuccess: false, message: "Failed to generate AI response" }
+  }
+}
+
+/**
+ * Subject Line Improvement Action
+ */
+export async function improveSubjectLineAction(
+  text: string,
+  mode: "improve" | "ab_test" | "audience_specific" | "seasonal" = "improve",
+  audienceType?: string,
+  season?: string
+): Promise<ActionState<string>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
+  }
+
+  const template = getTemplate("subject_line", mode)
+  if (!template) {
+    return { isSuccess: false, message: `Template not found for mode: ${mode}` }
+  }
+
+  const variables: Record<string, string> = { text }
+  if (mode === "audience_specific" && audienceType) {
+    variables.audience_type = audienceType
+  }
+  if (mode === "seasonal" && season) {
+    variables.season = season
+  }
+
+  const prompt = populateTemplate(template, variables)
+  return await callAIWithCache(prompt, "subject_line", userId, { mode, audienceType, season })
+}
+
+/**
+ * CTA Improvement Action
+ */
+export async function improveCTAAction(
+  text: string,
+  mode: "improve" | "variations" | "platform_specific" | "funnel_stage" = "improve",
+  platform?: string,
+  funnelStage?: string
+): Promise<ActionState<string>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
+  }
+
+  const template = getTemplate("cta", mode)
+  if (!template) {
+    return { isSuccess: false, message: `Template not found for mode: ${mode}` }
+  }
+
+  const variables: Record<string, string> = { text }
+  if (mode === "platform_specific" && platform) {
+    variables.platform = platform
+  }
+  if (mode === "funnel_stage" && funnelStage) {
+    variables.funnel_stage = funnelStage
+  }
+
+  const prompt = populateTemplate(template, variables)
+  return await callAIWithCache(prompt, "cta", userId, { mode, platform, funnelStage })
+}
+
+/**
+ * Body Content Improvement Action
+ */
+export async function improveBodyContentAction(
+  text: string,
+  mode: "improve_engagement" | "shorten" | "tone_adjustment" | "structure" | "storytelling" | "personalization" = "improve_engagement",
+  tone?: string,
+  audienceSegment?: string
+): Promise<ActionState<string>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
+  }
+
+  // Truncate long content at sentence boundaries
+  const processedText = truncateAtSentenceBoundary(text, MAX_INPUT_LENGTH)
+
+  const template = getTemplate("body_content", mode)
+  if (!template) {
+    return { isSuccess: false, message: `Template not found for mode: ${mode}` }
+  }
+
+  const variables: Record<string, string> = { text: processedText }
+  if (mode === "tone_adjustment" && tone) {
+    variables.tone = tone
+  }
+  if (mode === "personalization" && audienceSegment) {
+    variables.audience_segment = audienceSegment
+  }
+
+  const prompt = populateTemplate(template, variables)
+  return await callAIWithCache(prompt, "body_content", userId, { mode, tone, audienceSegment })
+}
+
+/**
+ * Extend Content Action - NEW MODE
+ */
+export async function extendContentAction(
+  text: string,
+  mode: "continue" | "precede" | "expand_section" = "continue",
+  context?: string
+): Promise<ActionState<string>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
+  }
+
+  const template = getTemplate("extension", mode)
+  if (!template) {
+    return { isSuccess: false, message: `Template not found for mode: ${mode}` }
+  }
+
+  const variables: Record<string, string> = { 
+    text,
+    context_info: context ? `Context: ${context}` : ""
+  }
+
+  const prompt = populateTemplate(template, variables)
+  return await callAIWithCache(prompt, "extend", userId, { mode, context })
+}
+
+/**
+ * Enhanced Rewrite Action with Safety Guards
+ */
+export async function enhancedRewriteWithToneAction(
+  text: string,
+  tone: string,
+  enforceBoundaries: boolean = true
+): Promise<ActionState<string>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
+  }
+
+  // Enforce sentence boundaries if requested
+  let processedText = text
+  if (enforceBoundaries) {
+    processedText = enforceSentenceBoundary(text, text)
+  }
+
+  // Truncate if too long
+  processedText = truncateAtSentenceBoundary(processedText, MAX_INPUT_LENGTH)
+
+  const prompt = `You are a professional writing assistant. Rewrite the following text to have a ${tone} tone.
+Your response should be only the rewritten text, without any additional comments, explanations, or markdown formatting. 
+Preserve the original meaning and structure as much as possible.
+
+Original Text:
+"${processedText}"
+
+Rewritten Text:`
+
+  return await callAIWithCache(prompt, "rewrite", userId, { tone })
+}
+
+/**
+ * Clear cache for specific user or all cache
+ */
+export async function clearAICacheAction(userId?: string): Promise<ActionState<void>> {
+  try {
+    if (userId) {
+      // Clear cache entries for specific user (would need to track user keys in production)
+      // For now, just clear all cache
+      responseCache.clear()
+    } else {
+      responseCache.clear()
+    }
+
+    return { isSuccess: true, message: "Cache cleared successfully", data: undefined }
+  } catch (error) {
+    console.error("Error clearing cache:", error)
+    return { isSuccess: false, message: "Failed to clear cache" }
   }
 }
 
@@ -386,17 +779,29 @@ export async function rewriteWithToneAction(
   if (!process.env.OPENAI_API_KEY) {
     return { isSuccess: false, message: "OpenAI API key not configured" }
   }
-  if (!text.trim()) {
-    return { isSuccess: false, message: "No text provided to rewrite" }
+  
+  // Apply safety validation
+  const validation = validateInput(text)
+  if (!validation.isValid) {
+    return { isSuccess: false, message: validation.message! }
   }
 
   try {
+    // Check rate limits for authenticated users
+    const { userId } = await auth()
+    if (userId && !checkRateLimit(userId)) {
+      return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
+    }
+
+    // Truncate text at sentence boundaries if too long
+    const processedText = truncateAtSentenceBoundary(text, MAX_INPUT_LENGTH)
+
     const prompt = `
 You are a professional writing assistant. Rewrite the following text to have a ${tone} tone.
 Your response should be only the rewritten text, without any additional comments, explanations, or markdown formatting. Preserve the original meaning and structure as much as possible.
 
 Original Text:
-"${text}"
+"${processedText}"
 
 Rewritten Text:`
 
@@ -404,6 +809,7 @@ Rewritten Text:`
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
+      max_tokens: MAX_OUTPUT_TOKENS,
     })
 
     const rewrittenText = response.choices[0]?.message?.content?.trim()

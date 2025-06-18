@@ -1,10 +1,57 @@
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { AISuggestion } from "@/types"
+import crypto from "crypto"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
+
+// Cache for grammar responses
+const grammarCache = new Map<
+  string,
+  { suggestions: AISuggestion[]; timestamp: number }
+>()
+const GRAMMAR_CACHE_DURATION = 15 * 60 * 1000 // 15 minutes (shorter for grammar)
+
+// Rate limiting for grammar checks
+const grammarRateLimiter = new Map<
+  string,
+  { count: number; resetTime: number }
+>()
+const GRAMMAR_RATE_LIMIT = 120 // Higher limit for grammar (120/hour)
+const GRAMMAR_RATE_WINDOW = 60 * 60 * 1000 // 1 hour
+
+/**
+ * Generate cache key for grammar check
+ */
+function generateGrammarCacheKey(text: string, level: string): string {
+  const content = JSON.stringify({ text: text.trim(), level })
+  return crypto.createHash("sha256").update(content).digest("hex")
+}
+
+/**
+ * Check grammar rate limits
+ */
+function checkGrammarRateLimit(clientIP: string): boolean {
+  const now = Date.now()
+  const userLimit = grammarRateLimiter.get(clientIP)
+
+  if (!userLimit || now > userLimit.resetTime) {
+    grammarRateLimiter.set(clientIP, {
+      count: 1,
+      resetTime: now + GRAMMAR_RATE_WINDOW
+    })
+    return true
+  }
+
+  if (userLimit.count >= GRAMMAR_RATE_LIMIT) {
+    return false
+  }
+
+  userLimit.count++
+  return true
+}
 
 function findTextSpan(
   fullText: string,
@@ -109,6 +156,40 @@ export async function POST(req: NextRequest) {
       return new Response("No text provided", { status: 400 })
     }
 
+    // Rate limiting check
+    const clientIP =
+      req.headers.get("x-forwarded-for") ||
+      req.headers.get("x-real-ip") ||
+      "unknown"
+    if (!checkGrammarRateLimit(clientIP)) {
+      return new Response("Rate limit exceeded for grammar checks", {
+        status: 429
+      })
+    }
+
+    // Check cache first
+    const cacheKey = generateGrammarCacheKey(text, level)
+    const cached = grammarCache.get(cacheKey)
+
+    if (cached && Date.now() - cached.timestamp < GRAMMAR_CACHE_DURATION) {
+      // Return cached results as a stream
+      const stream = new ReadableStream({
+        start(controller) {
+          cached.suggestions.forEach(suggestion => {
+            controller.enqueue(JSON.stringify(suggestion) + "\n")
+          })
+          controller.close()
+        }
+      })
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "X-Cache-Status": "HIT"
+        }
+      })
+    }
+
     const prompt = generateStreamingGrammarPrompt(text, level)
 
     const responseStream = await openai.chat.completions.create({
@@ -119,6 +200,7 @@ export async function POST(req: NextRequest) {
     })
 
     const usedPositions = new Set<number>()
+    const suggestionsToCache: AISuggestion[] = []
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -201,6 +283,9 @@ export async function POST(req: NextRequest) {
                   title
                 }
 
+                // Add to cache collection
+                suggestionsToCache.push(suggestion)
+
                 controller.enqueue(JSON.stringify(suggestion) + "\n")
 
                 buffer = buffer.substring(jsonEndIndex + 1)
@@ -219,12 +304,34 @@ export async function POST(req: NextRequest) {
             }
           }
         }
+
+        // Cache the suggestions after streaming is complete
+        if (suggestionsToCache.length > 0 || text.trim().length > 0) {
+          grammarCache.set(cacheKey, {
+            suggestions: suggestionsToCache,
+            timestamp: Date.now()
+          })
+
+          // Clean up old cache entries periodically
+          if (grammarCache.size > 500) {
+            const now = Date.now()
+            for (const [key, value] of grammarCache.entries()) {
+              if (now - value.timestamp > GRAMMAR_CACHE_DURATION) {
+                grammarCache.delete(key)
+              }
+            }
+          }
+        }
+
         controller.close()
       }
     })
 
     return new Response(stream, {
-      headers: { "Content-Type": "application/json; charset=utf-8" }
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Cache-Status": "MISS"
+      }
     })
   } catch (error) {
     console.error("Error in streaming grammar check:", error)

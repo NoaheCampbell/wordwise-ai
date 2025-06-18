@@ -23,7 +23,8 @@ export const suggestionTypeEnum = pgEnum("suggestion_type", [
   "conciseness",
   "tone",
   "cta",
-  "vocabulary"
+  "vocabulary",
+  "passive-voice"
 ])
 
 export const feedbackEnum = pgEnum("feedback", ["positive", "negative"])

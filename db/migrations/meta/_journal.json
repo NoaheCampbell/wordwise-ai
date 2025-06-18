@@ -8,6 +8,13 @@
       "when": 1750096660767,
       "tag": "0000_slow_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1750261094934,
+      "tag": "0001_wandering_moondragon",
+      "breakpoints": true
     }
   ]
 }

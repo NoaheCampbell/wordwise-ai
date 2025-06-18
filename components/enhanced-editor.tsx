@@ -32,7 +32,12 @@ import {
 import {
   analyzeTextAction,
   analyzeTextInParallelAction,
-  rewriteWithToneAction
+  rewriteWithToneAction,
+  improveSubjectLineAction,
+  improveCTAAction,
+  improveBodyContentAction,
+  extendContentAction,
+  enhancedRewriteWithToneAction
 } from "@/actions/ai-analysis-actions"
 import {
   AISuggestion,
@@ -50,7 +55,12 @@ import {
 } from "@/actions/db/documents-actions"
 import {
   applySuggestionByContentAction,
-  dismissSuggestionByContentAction
+  dismissSuggestionByContentAction,
+  clearDocumentSuggestionsAction,
+  getActiveSuggestionsForUIAction,
+  createSuggestionAction,
+  cleanupOldSuggestionsAction,
+  cleanupOldDocumentSuggestionsAction
 } from "@/actions/db/suggestions-actions"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
@@ -58,7 +68,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
@@ -456,6 +468,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setCurrentHistoryIndex(0)
       lastContentLength.current = (initialDocument.content || "").length
       lastCursorPosition.current = 0
+
+      // Load cached suggestions for this document
+      if (initialDocument.id) {
+        loadCachedSuggestionsForDocument(initialDocument.id)
+      }
     }
     return () => {
       setSuggestions([])
@@ -639,6 +656,196 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
+  // New AI Enhancement Functions
+  const handleSubjectLineImprovement = async (
+    mode: "improve" | "ab_test" | "audience_specific" | "seasonal"
+  ) => {
+    const selectionInfo = getSelectionRange()
+    if (!selectionInfo) {
+      toast.info("Please select the subject line text you want to improve.")
+      return
+    }
+
+    const { start, end, text: selectedText } = selectionInfo
+
+    setIsRewriting(true)
+    const result = await improveSubjectLineAction(selectedText, mode)
+    setIsRewriting(false)
+
+    if (result.isSuccess) {
+      const improvedText = result.data
+
+      const newContent =
+        contentRef.current.slice(0, start) +
+        improvedText +
+        contentRef.current.slice(end)
+
+      contentRef.current = newContent
+      setContent(newContent)
+      setContentForWordCount(newContent)
+
+      setHistory(prevHistory => [...prevHistory, newContent])
+      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+
+      toast.success(`Subject line improved using ${mode} strategy.`)
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  const handleCTAImprovement = async (
+    mode: "improve" | "variations" | "platform_specific" | "funnel_stage"
+  ) => {
+    const selectionInfo = getSelectionRange()
+    if (!selectionInfo) {
+      toast.info("Please select the CTA text you want to improve.")
+      return
+    }
+
+    const { start, end, text: selectedText } = selectionInfo
+
+    setIsRewriting(true)
+    const result = await improveCTAAction(selectedText, mode)
+    setIsRewriting(false)
+
+    if (result.isSuccess) {
+      const improvedText = result.data
+
+      const newContent =
+        contentRef.current.slice(0, start) +
+        improvedText +
+        contentRef.current.slice(end)
+
+      contentRef.current = newContent
+      setContent(newContent)
+      setContentForWordCount(newContent)
+
+      setHistory(prevHistory => [...prevHistory, newContent])
+      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+
+      toast.success(`CTA improved using ${mode} approach.`)
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  const handleBodyContentImprovement = async (
+    mode:
+      | "improve_engagement"
+      | "shorten"
+      | "tone_adjustment"
+      | "structure"
+      | "storytelling"
+      | "personalization"
+  ) => {
+    const selectionInfo = getSelectionRange()
+    if (!selectionInfo) {
+      toast.info("Please select the content you want to improve.")
+      return
+    }
+
+    const { start, end, text: selectedText } = selectionInfo
+
+    setIsRewriting(true)
+    const result = await improveBodyContentAction(selectedText, mode)
+    setIsRewriting(false)
+
+    if (result.isSuccess) {
+      const improvedText = result.data
+
+      const newContent =
+        contentRef.current.slice(0, start) +
+        improvedText +
+        contentRef.current.slice(end)
+
+      contentRef.current = newContent
+      setContent(newContent)
+      setContentForWordCount(newContent)
+
+      setHistory(prevHistory => [...prevHistory, newContent])
+      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+
+      toast.success(
+        `Content improved using ${mode.replace("_", " ")} enhancement.`
+      )
+    } else {
+      toast.error(result.message)
+    }
+  }
+
+  const handleContentExtension = async (
+    mode: "continue" | "precede" | "expand_section"
+  ) => {
+    const selectionInfo = getSelectionRange()
+    if (!selectionInfo) {
+      toast.info("Please select the text you want to extend.")
+      return
+    }
+
+    const { start, end, text: selectedText } = selectionInfo
+
+    setIsRewriting(true)
+    const result = await extendContentAction(selectedText, mode)
+    setIsRewriting(false)
+
+    if (result.isSuccess) {
+      const extendedText = result.data
+      let newContent: string
+
+      if (mode === "precede") {
+        // Add content before the selection
+        newContent =
+          contentRef.current.slice(0, start) +
+          extendedText +
+          "\n\n" +
+          selectedText +
+          contentRef.current.slice(end)
+      } else if (mode === "continue") {
+        // Add content after the selection
+        newContent =
+          contentRef.current.slice(0, end) +
+          "\n\n" +
+          extendedText +
+          contentRef.current.slice(end)
+      } else {
+        // Replace with expanded content
+        newContent =
+          contentRef.current.slice(0, start) +
+          extendedText +
+          contentRef.current.slice(end)
+      }
+
+      contentRef.current = newContent
+      setContent(newContent)
+      setContentForWordCount(newContent)
+
+      setHistory(prevHistory => [...prevHistory, newContent])
+      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+
+      toast.success(
+        `Content ${mode === "precede" ? "preceded" : mode === "continue" ? "continued" : "expanded"} successfully.`
+      )
+    } else {
+      toast.error(result.message)
+    }
+  }
+
   const handleRealTimeCheck = async (
     textToCheck: string,
     level: "spelling" | "full"
@@ -706,6 +913,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           if (line.trim() === "") continue
           try {
             const suggestion: AISuggestion = JSON.parse(line)
+            console.log("Parsed suggestion from stream:", {
+              id: suggestion.id,
+              type: suggestion.type,
+              originalText: suggestion.originalText,
+              suggestedText: suggestion.suggestedText,
+              documentId: document?.id
+            })
+
             if (suggestion.span) {
               const existingHighlight = validHighlights.find(
                 h => h.id === suggestion.id
@@ -729,6 +944,48 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               if (actualText === suggestion.originalText) {
                 usedPositions.add(highlight.start)
                 newHighlightsRaw.push(highlight)
+
+                // Save grammar/spelling suggestions to database
+                console.log("Checking save conditions:", {
+                  hasDocumentId: !!document?.id,
+                  suggestionType: suggestion.type,
+                  isGrammarOrSpelling:
+                    suggestion.type === "grammar" ||
+                    suggestion.type === "spelling"
+                })
+
+                if (
+                  document?.id &&
+                  (suggestion.type === "grammar" ||
+                    suggestion.type === "spelling")
+                ) {
+                  console.log("Saving suggestion to database:", {
+                    documentId: document.id,
+                    type: suggestion.type,
+                    originalText: suggestion.originalText,
+                    suggestedText: suggestion.suggestedText
+                  })
+
+                  createSuggestionAction({
+                    documentId: document.id,
+                    type: suggestion.type as any,
+                    originalText: suggestion.originalText,
+                    suggestedText: suggestion.suggestedText,
+                    explanation: suggestion.description,
+                    startPosition: suggestion.span.start,
+                    endPosition: suggestion.span.end,
+                    isAccepted: false
+                  })
+                    .then(result => {
+                      console.log("Suggestion saved successfully:", result)
+                    })
+                    .catch((error: any) => {
+                      console.error(
+                        "Error saving grammar suggestion to database:",
+                        error
+                      )
+                    })
+                }
               } else {
                 console.warn("Real-time highlight position mismatch:", {
                   suggestionId: suggestion.id,
@@ -761,6 +1018,58 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   highlight.end = correctPos + suggestion.originalText.length
                   usedPositions.add(correctPos)
                   newHighlightsRaw.push(highlight)
+
+                  // Save grammar/spelling suggestions to database (corrected position)
+                  console.log(
+                    "Checking save conditions (corrected position):",
+                    {
+                      hasDocumentId: !!document?.id,
+                      suggestionType: suggestion.type,
+                      isGrammarOrSpelling:
+                        suggestion.type === "grammar" ||
+                        suggestion.type === "spelling"
+                    }
+                  )
+
+                  if (
+                    document?.id &&
+                    (suggestion.type === "grammar" ||
+                      suggestion.type === "spelling")
+                  ) {
+                    console.log(
+                      "Saving suggestion to database (corrected position):",
+                      {
+                        documentId: document.id,
+                        type: suggestion.type,
+                        originalText: suggestion.originalText,
+                        suggestedText: suggestion.suggestedText,
+                        position: correctPos
+                      }
+                    )
+
+                    createSuggestionAction({
+                      documentId: document.id,
+                      type: suggestion.type as any,
+                      originalText: suggestion.originalText,
+                      suggestedText: suggestion.suggestedText,
+                      explanation: suggestion.description,
+                      startPosition: correctPos,
+                      endPosition: correctPos + suggestion.originalText.length,
+                      isAccepted: false
+                    })
+                      .then(result => {
+                        console.log(
+                          "Suggestion saved successfully (corrected position):",
+                          result
+                        )
+                      })
+                      .catch((error: any) => {
+                        console.error(
+                          "Error saving grammar suggestion to database:",
+                          error
+                        )
+                      })
+                  }
                 }
               }
             }
@@ -789,15 +1098,276 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
+  // Helper function to find a new position for text when the saved position is invalid
+  const findNewPosition = (
+    fullText: string,
+    searchText: string,
+    usedPositions: Set<number>
+  ): { start: number; end: number } | null => {
+    // Function to check if a position has valid word boundaries
+    const hasWordBoundary = (
+      text: string,
+      pos: number,
+      searchLength: number
+    ) => {
+      const beforeChar = pos > 0 ? text[pos - 1] : undefined
+      const afterChar = text[pos + searchLength] || undefined
+      const isBoundary = (char: string | undefined) =>
+        !char || /[^A-Za-z0-9]/.test(char)
+      return isBoundary(beforeChar) && isBoundary(afterChar)
+    }
+
+    // First attempt: Direct search with word boundaries
+    let searchFrom = 0
+    while (searchFrom < fullText.length) {
+      const foundPos = fullText.indexOf(searchText, searchFrom)
+      if (foundPos === -1) break
+
+      // Check if this position is available and has proper word boundaries
+      if (
+        !usedPositions.has(foundPos) &&
+        hasWordBoundary(fullText, foundPos, searchText.length)
+      ) {
+        return { start: foundPos, end: foundPos + searchText.length }
+      }
+
+      searchFrom = foundPos + 1
+    }
+
+    // Second attempt: Search without word boundary constraints
+    searchFrom = 0
+    while (searchFrom < fullText.length) {
+      const foundPos = fullText.indexOf(searchText, searchFrom)
+      if (foundPos === -1) break
+
+      if (!usedPositions.has(foundPos)) {
+        return { start: foundPos, end: foundPos + searchText.length }
+      }
+
+      searchFrom = foundPos + 1
+    }
+
+    // Final fallback: Try with trimmed text
+    const trimmedSearchText = searchText.trim()
+    if (trimmedSearchText !== searchText && trimmedSearchText.length > 0) {
+      return findNewPosition(fullText, trimmedSearchText, usedPositions)
+    }
+
+    return null
+  }
+
+  // Load cached suggestions for the document
+  const loadCachedSuggestionsForDocument = async (documentId: string) => {
+    if (!documentId) {
+      console.log("No document ID provided for loading suggestions")
+      return
+    }
+
+    console.log("Loading cached suggestions for document:", documentId)
+
+    try {
+      const result = await getActiveSuggestionsForUIAction(documentId)
+      console.log("Cached suggestions result:", result)
+
+      if (result.isSuccess && result.data.length > 0) {
+        console.log("Found cached suggestions:", result.data)
+
+        // Validate positions and convert to HighlightedText format for the UI
+        const usedPositions = new Set<number>()
+        const validHighlights: HighlightedText[] = []
+
+        for (const suggestion of result.data) {
+          const savedStart = suggestion.span.start
+          const savedEnd = suggestion.span.end
+          const originalText = suggestion.originalText
+
+          // Check if the saved position still matches the text
+          const currentTextAtPosition = contentRef.current.slice(
+            savedStart,
+            savedEnd
+          )
+
+          let finalStart = savedStart
+          let finalEnd = savedEnd
+
+          if (currentTextAtPosition === originalText) {
+            // Position is still valid
+            console.log("Position valid for suggestion:", suggestion.id, {
+              savedStart,
+              savedEnd,
+              originalText
+            })
+            if (!usedPositions.has(savedStart)) {
+              usedPositions.add(savedStart)
+            } else {
+              // Position conflict, try to find new position
+              console.log(
+                "Position conflict for suggestion:",
+                suggestion.id,
+                "searching for new position"
+              )
+              const newPos = findNewPosition(
+                contentRef.current,
+                originalText,
+                usedPositions
+              )
+              if (newPos) {
+                finalStart = newPos.start
+                finalEnd = newPos.end
+                usedPositions.add(finalStart)
+              } else {
+                console.warn(
+                  "Could not find valid position for cached suggestion:",
+                  suggestion.id
+                )
+                continue // Skip this suggestion
+              }
+            }
+          } else {
+            // Position is invalid, try to find the correct position
+            console.log("Position invalid for suggestion:", suggestion.id, {
+              expectedText: originalText,
+              actualText: currentTextAtPosition,
+              savedPosition: { start: savedStart, end: savedEnd }
+            })
+
+            const newPos = findNewPosition(
+              contentRef.current,
+              originalText,
+              usedPositions
+            )
+            if (newPos) {
+              finalStart = newPos.start
+              finalEnd = newPos.end
+              usedPositions.add(finalStart)
+              console.log(
+                "Found new position for suggestion:",
+                suggestion.id,
+                newPos
+              )
+            } else {
+              console.warn(
+                "Could not find valid position for cached suggestion:",
+                suggestion.id
+              )
+              continue // Skip this suggestion
+            }
+          }
+
+          // Create valid highlight
+          validHighlights.push({
+            id: suggestion.id,
+            start: finalStart,
+            end: finalEnd,
+            type: suggestion.type,
+            suggestion: {
+              ...suggestion,
+              span: { start: finalStart, end: finalEnd, text: originalText }
+            }
+          })
+        }
+
+        console.log(
+          "Valid highlights after position validation:",
+          validHighlights
+        )
+
+        setDeepHighlights(validHighlights)
+        setSuggestions(validHighlights.map(h => h.suggestion))
+
+        // Show toast about loaded suggestions
+        const restoredCount = validHighlights.length
+        const totalCount = result.data.length
+        if (restoredCount === totalCount) {
+          toast.info(
+            `Restored ${restoredCount} cached suggestion${restoredCount !== 1 ? "s" : ""}`
+          )
+        } else {
+          toast.info(
+            `Restored ${restoredCount} of ${totalCount} cached suggestions (${totalCount - restoredCount} had invalid positions)`
+          )
+        }
+      } else {
+        console.log("No cached suggestions found or result failed:", result)
+      }
+    } catch (error) {
+      console.error("Error loading cached suggestions:", error)
+      toast.error("Failed to load cached suggestions")
+    }
+  }
+
+  // Legacy function for backward compatibility
+  const loadCachedSuggestions = async () => {
+    if (!document?.id) {
+      console.log("No document ID available for loading suggestions")
+      return
+    }
+    await loadCachedSuggestionsForDocument(document.id)
+  }
+
   const analyzeText = async () => {
     if (!contentRef.current.trim()) return
 
+    console.log("Starting analysis with:", {
+      documentId: document?.id,
+      useParallelAnalysis,
+      contentLength: contentRef.current.length
+    })
+
     setIsAnalyzing(true)
     setProviderIsAnalyzing(true)
+
+    // Clear existing suggestions when starting new analysis - WAIT for completion
+    if (document?.id) {
+      try {
+        console.log("Clearing existing suggestions for document:", document.id)
+        const clearResult = await clearDocumentSuggestionsAction(document.id)
+
+        if (clearResult.isSuccess) {
+          console.log(
+            `Successfully cleared database suggestions: ${clearResult.message}`
+          )
+          console.log(
+            `Deleted ${clearResult.data.deletedCount} suggestions from database`
+          )
+
+          // Small delay to ensure database transaction is fully committed
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } else {
+          console.error(
+            "Failed to clear database suggestions:",
+            clearResult.message
+          )
+          // Continue anyway, but log the issue
+        }
+
+        // Clear UI state after database clearing
+        setDeepHighlights([])
+        setRealTimeHighlights([])
+        setSuggestions([])
+        console.log("Cleared UI suggestions state")
+      } catch (error) {
+        console.error("Error clearing suggestions:", error)
+        // Still clear UI state even if database clearing failed
+        setDeepHighlights([])
+        setRealTimeHighlights([])
+        setSuggestions([])
+      }
+    } else {
+      // No document ID, just clear UI state
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+    }
     try {
       const action = useParallelAnalysis
         ? analyzeTextInParallelAction
         : analyzeTextAction
+
+      console.log(
+        "Using analysis method:",
+        useParallelAnalysis ? "parallel" : "single"
+      )
 
       let result
       if (action === analyzeTextAction) {
@@ -817,18 +1387,28 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           true // saveSuggestions
         )
       } else {
-        // For parallel analysis, use existing call
-        result = await action({
-          text: contentRef.current,
-          analysisTypes: [
-            "grammar",
-            "spelling",
-            "clarity",
-            "conciseness",
-            "passive-voice"
-          ]
-        })
+        // For parallel analysis, also pass documentId and saveSuggestions
+        result = await action(
+          {
+            text: contentRef.current,
+            analysisTypes: [
+              "grammar",
+              "spelling",
+              "clarity",
+              "conciseness",
+              "passive-voice"
+            ]
+          },
+          document?.id, // documentId
+          true // saveSuggestions
+        )
       }
+
+      console.log("Analysis result:", {
+        isSuccess: result.isSuccess,
+        suggestionsCount: result.data?.overallSuggestions?.length || 0,
+        documentId: document?.id
+      })
 
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)
@@ -1165,6 +1745,52 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }, [content, highlights])
 
+  // Cleanup old suggestions periodically
+  useEffect(() => {
+    const cleanupInterval = setInterval(
+      async () => {
+        try {
+          // Clean up old suggestions for current user (default 30 days)
+          const result = await cleanupOldSuggestionsAction()
+          if (result.isSuccess && result.data.deletedCount > 0) {
+            console.log(
+              `Automatic cleanup: Removed ${result.data.deletedCount} old suggestions`
+            )
+          }
+        } catch (error) {
+          console.error("Error during automatic suggestion cleanup:", error)
+        }
+      },
+      24 * 60 * 60 * 1000
+    ) // Run every 24 hours
+
+    // Cleanup on component mount (immediate cleanup)
+    const immediateCleanup = async () => {
+      try {
+        // Clean up old suggestions for current document (7 days)
+        if (document?.id) {
+          const result = await cleanupOldDocumentSuggestionsAction(
+            document.id,
+            7
+          )
+          if (result.isSuccess && result.data.deletedCount > 0) {
+            console.log(
+              `Document cleanup: Removed ${result.data.deletedCount} old suggestions for current document`
+            )
+          }
+        }
+      } catch (error) {
+        console.error("Error during immediate document cleanup:", error)
+      }
+    }
+
+    immediateCleanup()
+
+    return () => {
+      clearInterval(cleanupInterval)
+    }
+  }, [document?.id])
+
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
@@ -1227,6 +1853,26 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                       Parallel Analysis
                     </Label>
                   </div>
+                  {document?.id && (
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          if (document?.id) {
+                            await clearDocumentSuggestionsAction(document.id)
+                            setDeepHighlights([])
+                            setRealTimeHighlights([])
+                            setSuggestions([])
+                            toast.success("Cached suggestions cleared")
+                          }
+                        }}
+                        className="w-full text-xs"
+                      >
+                        Clear Cached Suggestions
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1271,9 +1917,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Tone rewrite dropdowns */}
+        {/* Unified AI Enhancement Controls */}
         <div className="flex flex-nowrap items-center gap-1">
-          {/* Hook Optimization */}
+          {/* Quick Tone Adjustments */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1282,12 +1928,32 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 disabled={isRewriting}
                 className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
               >
-                Hook Optimization
+                🎨 Quick Tone
                 <ChevronDown className="size-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {HOOK_TONES.map(t => (
+              <DropdownMenuLabel>Basic Tones</DropdownMenuLabel>
+              {[
+                "Professional",
+                "Casual",
+                "Friendly",
+                "Persuasive",
+                "Direct"
+              ].map(t => (
+                <DropdownMenuItem
+                  key={t}
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleRewrite(t)
+                  }}
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Specialized</DropdownMenuLabel>
+              {CLARITY_TONES.slice(0, 3).map(t => (
                 <DropdownMenuItem
                   key={t}
                   onSelect={e => {
@@ -1301,87 +1967,124 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Tone Personalization */}
+          {/* Advanced AI Enhancements */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+                className="flex items-center gap-1 whitespace-nowrap border-blue-200 bg-blue-50 px-2 py-1 text-sm text-blue-700 hover:bg-blue-100"
               >
-                Tone Personalization
+                ✨ AI Enhance
                 <ChevronDown className="size-3" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {PERSONALIZATION_TONES.map(t => (
-                <DropdownMenuItem
-                  key={t}
-                  onSelect={e => {
-                    e.preventDefault()
-                    handleRewrite(t)
-                  }}
-                >
-                  {t}
-                </DropdownMenuItem>
-              ))}
+            <DropdownMenuContent className="w-56">
+              <DropdownMenuLabel>📧 Subject Lines</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleSubjectLineImprovement("improve")
+                }}
+              >
+                ✨ Improve for Open Rates
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleSubjectLineImprovement("ab_test")
+                }}
+              >
+                🔬 Generate A/B Variations
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>🔥 Call-to-Actions</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleCTAImprovement("improve")
+                }}
+              >
+                ⚡ Boost Conversions
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleCTAImprovement("variations")
+                }}
+              >
+                🔄 5 CTA Variations
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>✍️ Content Quality</DropdownMenuLabel>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleBodyContentImprovement("improve_engagement")
+                }}
+              >
+                🎭 Improve Engagement
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleBodyContentImprovement("shorten")
+                }}
+              >
+                ✂️ Make Concise
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleBodyContentImprovement("structure")
+                }}
+              >
+                🏗️ Better Structure
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
-          {/* Call-to-Action Enhancements */}
+          {/* Content Extension */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+                className="flex items-center gap-1 whitespace-nowrap border-orange-200 bg-orange-50 px-2 py-1 text-sm text-orange-700 hover:bg-orange-100"
               >
-                CTA Enhancements
+                ➕ Extend
                 <ChevronDown className="size-3" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {CTA_TONES.map(t => (
-                <DropdownMenuItem
-                  key={t}
-                  onSelect={e => {
-                    e.preventDefault()
-                    handleRewrite(t)
-                  }}
-                >
-                  {t}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {/* Clarity & Conciseness */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={isRewriting}
-                className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm"
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleContentExtension("continue")
+                }}
               >
-                Clarity & Conciseness
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              {CLARITY_TONES.map(t => (
-                <DropdownMenuItem
-                  key={t}
-                  onSelect={e => {
-                    e.preventDefault()
-                    handleRewrite(t)
-                  }}
-                >
-                  {t}
-                </DropdownMenuItem>
-              ))}
+                ▶️ Continue Writing
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleContentExtension("precede")
+                }}
+              >
+                ◀️ Add Introduction
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={e => {
+                  e.preventDefault()
+                  handleContentExtension("expand_section")
+                }}
+              >
+                🔍 Expand Details
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
