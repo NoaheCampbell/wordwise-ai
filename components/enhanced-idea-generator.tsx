@@ -67,6 +67,7 @@ export function EnhancedIdeaGenerator({
   const [selectedType, setSelectedType] = useState<
     "headlines" | "topics" | "outlines"
   >("headlines")
+  const [savedIdeasCount, setSavedIdeasCount] = useState(0)
 
   const analyzePastContent = async () => {
     if (!user?.id) return
@@ -122,8 +123,11 @@ export function EnhancedIdeaGenerator({
   }
 
   const generateIdeas = async (type: "headlines" | "topics" | "outlines") => {
-    if (!currentContent.trim()) {
-      toast.error("No content to generate ideas from")
+    // Check if we have any analysis to work with
+    if (!currentContent.trim() && pastDocuments.length === 0) {
+      toast.error(
+        "Please analyze past content first or add some current content to generate ideas from"
+      )
       return
     }
 
@@ -149,9 +153,12 @@ export function EnhancedIdeaGenerator({
     try {
       const result = await saveIdeaAction(idea, documentId)
       if (result.isSuccess) {
-        toast.success("Idea saved successfully!")
+        toast.success(
+          "Idea saved successfully! You can find all saved ideas in the Research Panel."
+        )
         // Remove from generated ideas
         setGeneratedIdeas(prev => prev.filter(i => i.title !== idea.title))
+        setSavedIdeasCount(prev => prev + 1)
       } else {
         toast.error(result.message)
       }
@@ -170,6 +177,11 @@ export function EnhancedIdeaGenerator({
             <CardTitle className="flex items-center gap-2">
               <Brain className="size-5" />
               Enhanced Idea Generator
+              {savedIdeasCount > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {savedIdeasCount} saved
+                </Badge>
+              )}
             </CardTitle>
             <p className="text-muted-foreground text-sm">
               AI-powered idea generation based on comprehensive past content
@@ -353,104 +365,127 @@ export function EnhancedIdeaGenerator({
               </TabsContent>
 
               <TabsContent value="generate" className="space-y-6 p-6">
-                <div className="text-center">
-                  <h3 className="mb-2 text-lg font-semibold">
-                    Generate New Ideas
-                  </h3>
-                  <p className="text-muted-foreground mb-6">
-                    Choose what type of ideas to generate based on your content
-                    analysis
-                  </p>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <Card
-                      className="hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => generateIdeas("headlines")}
-                    >
-                      <CardContent className="p-6 text-center">
-                        <Lightbulb className="text-primary mx-auto mb-3 size-8" />
-                        <h4 className="mb-2 font-semibold">Headlines</h4>
-                        <p className="text-muted-foreground text-sm">
-                          Compelling newsletter headlines that avoid
-                          over-saturated topics
-                        </p>
-                        <Button
-                          className="mt-4 w-full"
-                          disabled={isGenerating}
-                          onClick={e => {
-                            e.stopPropagation()
-                            generateIdeas("headlines")
-                          }}
-                        >
-                          {isGenerating && selectedType === "headlines" ? (
-                            <RefreshCw className="mr-2 size-4 animate-spin" />
-                          ) : (
-                            <Sparkles className="mr-2 size-4" />
-                          )}
-                          Generate Headlines
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card
-                      className="hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => generateIdeas("topics")}
-                    >
-                      <CardContent className="p-6 text-center">
-                        <Target className="text-primary mx-auto mb-3 size-8" />
-                        <h4 className="mb-2 font-semibold">Topics</h4>
-                        <p className="text-muted-foreground text-sm">
-                          New topic areas that fill gaps in your content
-                          strategy
-                        </p>
-                        <Button
-                          className="mt-4 w-full"
-                          disabled={isGenerating}
-                          onClick={e => {
-                            e.stopPropagation()
-                            generateIdeas("topics")
-                          }}
-                        >
-                          {isGenerating && selectedType === "topics" ? (
-                            <RefreshCw className="mr-2 size-4 animate-spin" />
-                          ) : (
-                            <Sparkles className="mr-2 size-4" />
-                          )}
-                          Generate Topics
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card
-                      className="hover:bg-accent cursor-pointer transition-colors"
-                      onClick={() => generateIdeas("outlines")}
-                    >
-                      <CardContent className="p-6 text-center">
-                        <BookOpen className="text-primary mx-auto mb-3 size-8" />
-                        <h4 className="mb-2 font-semibold">Outlines</h4>
-                        <p className="text-muted-foreground text-sm">
-                          Detailed content outlines ready for immediate
-                          execution
-                        </p>
-                        <Button
-                          className="mt-4 w-full"
-                          disabled={isGenerating}
-                          onClick={e => {
-                            e.stopPropagation()
-                            generateIdeas("outlines")
-                          }}
-                        >
-                          {isGenerating && selectedType === "outlines" ? (
-                            <RefreshCw className="mr-2 size-4 animate-spin" />
-                          ) : (
-                            <Sparkles className="mr-2 size-4" />
-                          )}
-                          Generate Outlines
-                        </Button>
-                      </CardContent>
-                    </Card>
+                {!currentContent.trim() && pastDocuments.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Lightbulb className="text-muted-foreground mx-auto mb-4 size-12" />
+                    <h3 className="mb-2 text-lg font-semibold">
+                      Ready to Generate Ideas
+                    </h3>
+                    <p className="text-muted-foreground mb-4">
+                      To generate strategic ideas, please first analyze your
+                      past content or add some current content to work with.
+                    </p>
+                    <Button onClick={analyzePastContent} disabled={isAnalyzing}>
+                      {isAnalyzing ? (
+                        <RefreshCw className="mr-2 size-4 animate-spin" />
+                      ) : (
+                        <BookOpen className="mr-2 size-4" />
+                      )}
+                      Analyze Past Content
+                    </Button>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-center">
+                    <h3 className="mb-2 text-lg font-semibold">
+                      Generate New Ideas
+                    </h3>
+                    <p className="text-muted-foreground mb-6">
+                      Choose what type of ideas to generate based on your
+                      content analysis{" "}
+                      {pastDocuments.length > 0 &&
+                        `(${pastDocuments.length} past documents analyzed)`}
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                      <Card
+                        className="hover:bg-accent cursor-pointer transition-colors"
+                        onClick={() => generateIdeas("headlines")}
+                      >
+                        <CardContent className="p-6 text-center">
+                          <Lightbulb className="text-primary mx-auto mb-3 size-8" />
+                          <h4 className="mb-2 font-semibold">Headlines</h4>
+                          <p className="text-muted-foreground text-sm">
+                            Compelling newsletter headlines that avoid
+                            over-saturated topics
+                          </p>
+                          <Button
+                            className="mt-4 w-full"
+                            disabled={isGenerating}
+                            onClick={e => {
+                              e.stopPropagation()
+                              generateIdeas("headlines")
+                            }}
+                          >
+                            {isGenerating && selectedType === "headlines" ? (
+                              <RefreshCw className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-2 size-4" />
+                            )}
+                            Generate Headlines
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card
+                        className="hover:bg-accent cursor-pointer transition-colors"
+                        onClick={() => generateIdeas("topics")}
+                      >
+                        <CardContent className="p-6 text-center">
+                          <Target className="text-primary mx-auto mb-3 size-8" />
+                          <h4 className="mb-2 font-semibold">Topics</h4>
+                          <p className="text-muted-foreground text-sm">
+                            New topic areas that fill gaps in your content
+                            strategy
+                          </p>
+                          <Button
+                            className="mt-4 w-full"
+                            disabled={isGenerating}
+                            onClick={e => {
+                              e.stopPropagation()
+                              generateIdeas("topics")
+                            }}
+                          >
+                            {isGenerating && selectedType === "topics" ? (
+                              <RefreshCw className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-2 size-4" />
+                            )}
+                            Generate Topics
+                          </Button>
+                        </CardContent>
+                      </Card>
+
+                      <Card
+                        className="hover:bg-accent cursor-pointer transition-colors"
+                        onClick={() => generateIdeas("outlines")}
+                      >
+                        <CardContent className="p-6 text-center">
+                          <BookOpen className="text-primary mx-auto mb-3 size-8" />
+                          <h4 className="mb-2 font-semibold">Outlines</h4>
+                          <p className="text-muted-foreground text-sm">
+                            Detailed content outlines ready for immediate
+                            execution
+                          </p>
+                          <Button
+                            className="mt-4 w-full"
+                            disabled={isGenerating}
+                            onClick={e => {
+                              e.stopPropagation()
+                              generateIdeas("outlines")
+                            }}
+                          >
+                            {isGenerating && selectedType === "outlines" ? (
+                              <RefreshCw className="mr-2 size-4 animate-spin" />
+                            ) : (
+                              <Sparkles className="mr-2 size-4" />
+                            )}
+                            Generate Outlines
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="ideas" className="p-6">
@@ -464,6 +499,20 @@ export function EnhancedIdeaGenerator({
                       Generate some ideas to see them here with detailed
                       analysis and reasoning
                     </p>
+                    {savedIdeasCount > 0 && (
+                      <div className="mt-6 rounded-lg bg-blue-50 p-4 dark:bg-blue-950">
+                        <p className="text-sm text-blue-700 dark:text-blue-300">
+                          💡 You have saved {savedIdeasCount} idea
+                          {savedIdeasCount !== 1 ? "s" : ""} during this
+                          session!
+                          <br />
+                          <strong>
+                            Find all your saved ideas in the Research Panel
+                          </strong>{" "}
+                          (accessible from the editor toolbar).
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-4">

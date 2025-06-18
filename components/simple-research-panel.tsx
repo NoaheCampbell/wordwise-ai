@@ -151,7 +151,10 @@ export function SimpleResearchPanel({
           Research
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent
+        className="flex max-w-2xl flex-col"
+        style={{ maxHeight: "90vh" }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="size-5" />
@@ -202,7 +205,7 @@ export function SimpleResearchPanel({
             </div>
           )}
 
-          <ScrollArea className="h-[60vh]">
+          <ScrollArea className="flex-1">
             <div className="space-y-6 pr-4">
               {/* Content Summary */}
               {contentSummary && (

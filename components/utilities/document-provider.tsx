@@ -27,12 +27,16 @@ interface DocumentContextType {
   isLoading: boolean
   isLoadingLiveScore: boolean
   isAnalyzing: boolean
+  currentContent: string
+  currentDocumentId: string | null
   reloadDocuments: () => void
   reloadClarityScore: () => void
   updateLiveClarityScore: (text: string) => Promise<void>
   clearLiveClarityScore: () => void
   setSuggestions: (suggestions: AISuggestion[]) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
+  setCurrentContent: (content: string) => void
+  setCurrentDocumentId: (id: string | null) => void
   registerSuggestionCallbacks: (
     apply: (id: string) => void,
     dismiss: (id: string) => void
@@ -55,6 +59,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingLiveScore, setIsLoadingLiveScore] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [currentContent, setCurrentContent] = useState("")
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(
+    null
+  )
 
   const suggestionCallbacks = useRef({
     apply: (_id: string) => {},
@@ -129,12 +137,16 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         isLoading,
         isLoadingLiveScore,
         isAnalyzing,
+        currentContent,
+        currentDocumentId,
         reloadDocuments,
         reloadClarityScore,
         updateLiveClarityScore,
         clearLiveClarityScore,
         setSuggestions,
         setIsAnalyzing,
+        setCurrentContent,
+        setCurrentDocumentId,
         registerSuggestionCallbacks,
         applySuggestion,
         dismissSuggestion

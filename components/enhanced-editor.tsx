@@ -187,7 +187,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     reloadClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
-    setIsAnalyzing: setProviderIsAnalyzing
+    setIsAnalyzing: setProviderIsAnalyzing,
+    setCurrentContent,
+    setCurrentDocumentId
   } = useDocument()
 
   const [document, setDocument] = useState<SelectDocument | null>(
@@ -599,6 +601,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       lastContentLength.current = (initialDocument.content || "").length
       lastCursorPosition.current = 0
 
+      // Update provider with current content and document ID
+      setCurrentContent(initialDocument.content || "")
+      setCurrentDocumentId(initialDocument.id)
+
       // Load cached suggestions for this document
       if (initialDocument.id) {
         loadCachedSuggestionsForDocument(initialDocument.id)
@@ -607,7 +613,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return () => {
       setSuggestions([])
     }
-  }, [initialDocument, setSuggestions])
+  }, [initialDocument, setSuggestions, setCurrentContent, setCurrentDocumentId])
 
   const throttle = <T extends (...args: any[]) => void>(
     func: T,
@@ -1869,6 +1875,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     contentRef.current = newContent
     setContentForWordCount(newContent)
+    setCurrentContent(newContent) // Update provider with current content
     setHasManuallyEdited(true)
     lastContentLength.current = newLength
 
