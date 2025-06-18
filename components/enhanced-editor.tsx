@@ -2388,7 +2388,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </TooltipProvider>
 
         <SocialSnippetGenerator
-          documentId={document?.id}
+          document={document}
           sourceText={content}
           isOpen={isSocialSnippetOpen}
           onOpenChange={setIsSocialSnippetOpen}

@@ -31,17 +31,21 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { generateSocialSnippetsAction } from "@/actions/research-ideation-actions"
-import { SocialVariation } from "@/types"
+import { SocialVariation, SelectDocument } from "@/types"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertTriangle } from "lucide-react"
 
 interface SocialSnippetGeneratorProps {
   sourceText: string
-  documentId?: string
+  document?: SelectDocument | null
+  documentId?: string // Keep for backward compatibility
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
 }
 
 export function SocialSnippetGenerator({
   sourceText,
+  document,
   documentId,
   isOpen = false,
   onOpenChange
@@ -49,6 +53,25 @@ export function SocialSnippetGenerator({
   const [isGenerating, setIsGenerating] = useState(false)
   const [snippets, setSnippets] = useState<SocialVariation[]>([])
   const [activeTab, setActiveTab] = useState("all")
+
+  // Generate shareable link
+  const getAppUrl = () => {
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+      return process.env.NEXT_PUBLIC_APP_URL
+    }
+    // Fallback to current origin if env var not set
+    if (typeof window !== "undefined") {
+      return window.location.origin
+    }
+    return ""
+  }
+
+  const shareableLink =
+    document?.isPublic && document?.slug
+      ? `${getAppUrl()}/view/${document.slug}`
+      : ""
+
+  const isDocumentPublic = document?.isPublic || false
 
   const availablePlatforms = useMemo(
     () =>
@@ -73,12 +96,25 @@ export function SocialSnippetGenerator({
       const result = await generateSocialSnippetsAction(
         sourceText,
         platform,
-        documentId
+        document?.id || documentId
       )
       if (result.isSuccess) {
-        setSnippets(result.data)
+        // Add shareable link to each snippet if document is public
+        const enhancedSnippets = result.data.map(snippet => ({
+          ...snippet,
+          content: shareableLink
+            ? `${snippet.content}\n\n${shareableLink}`
+            : snippet.content,
+          characterCount: shareableLink
+            ? snippet.characterCount + shareableLink.length + 2 // +2 for line breaks
+            : snippet.characterCount
+        }))
+
+        setSnippets(enhancedSnippets)
         setActiveTab(platform)
-        toast.success(`Generated ${result.data.length} social media variations`)
+        toast.success(
+          `Generated ${enhancedSnippets.length} social media variations${shareableLink ? " with shareable links" : ""}`
+        )
       } else {
         toast.error(result.message)
       }
@@ -145,6 +181,18 @@ export function SocialSnippetGenerator({
         </DialogHeader>
 
         <div className="px-6 pb-4">
+          {/* Warning for non-public documents */}
+          {document && !isDocumentPublic && (
+            <Alert className="mb-4 border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+              <AlertDescription className="text-amber-800 dark:text-amber-200">
+                <strong>Document is not public.</strong> Social media posts will
+                be generated without a shareable link. Make your document public
+                in the share settings to include links in your posts.
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Generation Buttons */}
           <div className="mb-4 flex gap-2">
             <Button
