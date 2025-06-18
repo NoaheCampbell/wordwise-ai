@@ -15,6 +15,20 @@
       "when": 1750261094934,
       "tag": "0001_wandering_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1750267554493,
+      "tag": "0002_nebulous_wallflower",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1750275606772,
+      "tag": "0003_loud_diamondback",
+      "breakpoints": true
     }
   ]
 }

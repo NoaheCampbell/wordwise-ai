@@ -84,6 +84,15 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
+import { SimpleResearchPanel } from "@/components/simple-research-panel"
+import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
+import { DocumentShareDialog } from "@/components/document-share-dialog"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
 
 interface EnhancedEditorProps {
   initialDocument?: SelectDocument
@@ -198,6 +207,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
@@ -215,6 +225,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const lastCursorPosition = useRef(0)
   const lastContentLength = useRef(0)
 
+  // Research & Ideas state
+  const [isResearchPanelOpen, setIsResearchPanelOpen] = useState(false)
+  const [isSocialSnippetOpen, setIsSocialSnippetOpen] = useState(false)
+
   const highlights = useMemo(
     () => [...deepHighlights, ...realTimeHighlights],
     [deepHighlights, realTimeHighlights]
@@ -222,6 +236,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   // Track current selection for UI state
   const [hasSelection, setHasSelection] = useState(false)
+  const [preservedSelection, setPreservedSelection] = useState<{
+    start: number
+    end: number
+    text: string
+  } | null>(null)
 
   // Update selection state based on current selection
   const updateSelectionState = useCallback(() => {
@@ -235,6 +254,81 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setHasSelection(false)
     }
   }, [])
+
+  // Preserve current selection for dropdown interactions
+  const preserveSelection = useCallback(() => {
+    const selectionInfo = getSelectionRange()
+    if (selectionInfo) {
+      setPreservedSelection(selectionInfo)
+    }
+  }, [])
+
+  // Restore preserved selection
+  const restoreSelection = useCallback(() => {
+    if (preservedSelection && textareaRef.current) {
+      // Find the text at the preserved position to make sure it still matches
+      const currentText = contentRef.current.slice(
+        preservedSelection.start,
+        preservedSelection.end
+      )
+
+      if (currentText === preservedSelection.text) {
+        // Create a new selection at the preserved position
+        if (typeof window === "undefined" || !window.document) return
+
+        const range = window.document.createRange()
+        const selection = window.getSelection()
+
+        // Find the text nodes and set the range
+        let currentPos = 0
+        let startNode: Node | null = null
+        let endNode: Node | null = null
+        let startOffset = 0
+        let endOffset = 0
+
+        const findPositions = (node: Node): boolean => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            const textLength = node.textContent?.length || 0
+            if (
+              currentPos + textLength >= preservedSelection.start &&
+              !startNode
+            ) {
+              startNode = node
+              startOffset = preservedSelection.start - currentPos
+            }
+            if (currentPos + textLength >= preservedSelection.end && !endNode) {
+              endNode = node
+              endOffset = preservedSelection.end - currentPos
+              return true
+            }
+            currentPos += textLength
+          } else {
+            for (let i = 0; i < node.childNodes.length; i++) {
+              if (findPositions(node.childNodes[i])) {
+                return true
+              }
+            }
+          }
+          return false
+        }
+
+        findPositions(textareaRef.current)
+
+        if (startNode && endNode && selection) {
+          try {
+            range.setStart(startNode, startOffset)
+            range.setEnd(endNode, endOffset)
+            selection.removeAllRanges()
+            selection.addRange(range)
+            setHasSelection(true)
+          } catch (error) {
+            console.warn("Could not restore selection:", error)
+          }
+        }
+      }
+      setPreservedSelection(null)
+    }
+  }, [preservedSelection])
 
   const getCursorPosition = (element: Node | null): number => {
     if (!element) return 0
@@ -561,7 +655,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       toast.error("You must be logged in to save a document.")
       return
     }
-    if (!contentRef.current.trim() && !title.trim()) {
+
+    // Check if there's actual content to save
+    const hasContent =
+      contentRef.current.trim() ||
+      (title.trim() && title !== "Untitled Document")
+    if (!hasContent) {
       toast.error("Cannot save an empty document.")
       return
     }
@@ -584,7 +683,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         toast.error("Failed to update document")
       }
     } else {
-      // Create new document
+      // Create new document only if we have content
       const result = await createDocumentAction({
         title: title || "Untitled Document",
         content: contentRef.current
@@ -607,13 +706,53 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     setIsDeleting(true)
     const result = await deleteDocumentAction(document.id, user.id)
-    setIsDeleting(false)
 
     if (result.isSuccess) {
       toast.success("Document deleted successfully")
-      reloadDocuments()
-      router.push("/")
+
+      // Reset ALL component state completely
+      setDocument(null)
+      setTitle("Untitled Document")
+      setContent("")
+      contentRef.current = ""
+      setContentForWordCount("")
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
+      setHistory([])
+      setCurrentHistoryIndex(-1)
+      setHasManuallyEdited(true)
+      setIsResearchPanelOpen(false)
+      setIsSocialSnippetOpen(false)
+      setHasSelection(false)
+      setPreservedSelection(null)
+
+      // Reset all loading/analysis states
+      setIsAnalyzing(false)
+      setIsCheckingRealTime(false)
+      setIsSaving(false)
+      setIsRewriting(false)
+      setIsDeleting(false)
+
+      // Reset suggestion states
+      setSelectedSuggestion(null)
+      setShowDeleteAlert(false)
+
+      // Clear any text selection
+      if (window.getSelection) {
+        window.getSelection()?.removeAllRanges()
+      }
+
+      // Clear any DOM event listeners and intervals
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = ""
+        textareaRef.current.blur()
+      }
+
+      // Force a clean navigation to avoid component state conflicts
+      window.location.href = "/"
     } else {
+      setIsDeleting(false)
       toast.error(result.message)
     }
   }
@@ -647,22 +786,103 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return { start, end, text: selectedText }
   }
 
-  const handleRewrite = async (tone: string) => {
-    if (!contentRef.current.trim()) {
-      toast.info("There is no text to rewrite.")
-      return
+  // Enhanced sentence boundary validation for rewrites
+  const validateTextForRewrite = (
+    text: string
+  ): { isValid: boolean; message?: string } => {
+    if (!text.trim()) {
+      return { isValid: false, message: "Please select text to rewrite." }
     }
 
-    const selectionInfo = getSelectionRange()
-    if (!selectionInfo) {
-      toast.info("Please select the text segment you want to rewrite.")
-      return
+    if (text.length < 5) {
+      return {
+        isValid: false,
+        message: "Selected text is too short for a meaningful rewrite."
+      }
     }
 
-    const { start, end, text: selectedText } = selectionInfo
+    // Check if text ends with proper sentence punctuation or is a complete phrase
+    const sentenceEnders = /[.!?:;]$/
+    const isCompleteSentence = sentenceEnders.test(text.trim())
+
+    // Check if it's a fragment (starts mid-sentence)
+    const startsWithLowercase = /^[a-z]/.test(text.trim())
+    const hasConjunctions =
+      /^(and|but|or|so|yet|for|nor|because|since|although|though|while|if|unless|until|when|where|after|before)\s/i.test(
+        text.trim()
+      )
+
+    if (startsWithLowercase && hasConjunctions) {
+      return {
+        isValid: false,
+        message:
+          "Please select complete sentences for rewriting, not sentence fragments."
+      }
+    }
+
+    // Check for broken sentences (missing beginning or end)
+    if (!isCompleteSentence && text.length > 20) {
+      const words = text.trim().split(/\s+/)
+      if (words.length > 5 && !sentenceEnders.test(text.trim())) {
+        return {
+          isValid: false,
+          message:
+            "Selection appears to be incomplete. Please select full sentences ending with punctuation."
+        }
+      }
+    }
+
+    return { isValid: true }
+  }
+
+  // Enhanced rewrite function with sentence boundary validation
+  const handleRewriteWithValidation = async (
+    tone: string,
+    originalText?: string
+  ) => {
+    let textToRewrite: string
+    let start: number
+    let end: number
+
+    if (originalText) {
+      // Rewriting from a suggestion - find the text in the content
+      const index = contentRef.current.indexOf(originalText)
+      if (index === -1) {
+        toast.error(
+          "Could not find the text to rewrite. Please try selecting it manually."
+        )
+        return
+      }
+      textToRewrite = originalText
+      start = index
+      end = index + originalText.length
+    } else {
+      // Rewriting from user selection
+      if (!contentRef.current.trim()) {
+        toast.info("There is no text to rewrite.")
+        return
+      }
+
+      const selectionInfo = getSelectionRange()
+      if (!selectionInfo) {
+        toast.info("Please select the text segment you want to rewrite.")
+        return
+      }
+
+      textToRewrite = selectionInfo.text
+      start = selectionInfo.start
+      end = selectionInfo.end
+    }
+
+    // Validate the text for rewriting
+    const validation = validateTextForRewrite(textToRewrite)
+    if (!validation.isValid) {
+      toast.error(validation.message || "Invalid text selection for rewriting.")
+      return
+    }
 
     setIsRewriting(true)
-    const result = await rewriteWithToneAction(selectedText, tone)
+    const result = await rewriteWithToneAction(textToRewrite, tone)
     setIsRewriting(false)
 
     if (result.isSuccess) {
@@ -686,10 +906,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setRealTimeHighlights([])
       setSuggestions([])
 
-      toast.success(`Selected text rewritten in a ${tone.toLowerCase()} tone.`)
+      toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
     } else {
       toast.error(result.message)
     }
+  }
+
+  const handleRewrite = async (tone: string) => {
+    await handleRewriteWithValidation(tone)
   }
 
   // New AI Enhancement Functions
@@ -1840,6 +2064,15 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {document && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowShareDialog(true)}
+            >
+              Share
+            </Button>
+          )}
           <Button
             onClick={handleSave}
             disabled={isSaving}
@@ -1906,274 +2139,291 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 p-4">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleUndo}
-            disabled={currentHistoryIndex <= 0 || isRewriting}
-            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
-          >
-            <Undo className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRedo}
-            disabled={currentHistoryIndex >= history.length - 1 || isRewriting}
-            className="text-gray-700 hover:bg-gray-200 hover:text-gray-900 disabled:opacity-50"
-          >
-            <Redo className="size-4" />
-          </Button>
-          <Separator orientation="vertical" className="h-6" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={analyzeText}
-            disabled={isAnalyzing || !hasManuallyEdited || isRewriting}
-            className="text-blue-700 hover:bg-blue-100 hover:text-blue-900 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Sparkles
-              className={`mr-2 size-4 ${isAnalyzing ? "animate-spin" : ""}`}
-            />
-            {isAnalyzing ? "Analyzing..." : "Analyze"}
-          </Button>
-        </div>
+      <div className="flex flex-wrap items-center gap-2 border-b p-2">
+        <Button variant="ghost" size="icon" onClick={handleUndo}>
+          <Undo className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleRedo}>
+          <Redo className="size-4" />
+        </Button>
+        <Button variant="ghost" size="icon" onClick={handleSave}>
+          <Save className="size-4" />
+        </Button>
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Unified AI Enhancement Controls */}
-        <div className="flex flex-nowrap items-center gap-1">
-          {/* Show helper text when no selection, otherwise show buttons */}
-          {!hasSelection && highlights.length === 0 ? (
-            <div className="flex items-center gap-1 px-2 py-1.5 text-xs italic text-gray-500">
-              💡 Select text to unlock AI enhancements
-            </div>
-          ) : (
-            <>
-              {/* Quick Tone Adjustments */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap px-2 py-1 text-sm disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to use tone adjustments"
-                        : "Adjust tone of selected text"
-                    }
-                  >
-                    🎨 Quick Tone
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuLabel>Basic Tones</DropdownMenuLabel>
-                  {[
-                    "Professional",
-                    "Casual",
-                    "Friendly",
-                    "Persuasive",
-                    "Direct"
-                  ].map(t => (
-                    <DropdownMenuItem
-                      key={t}
-                      onSelect={e => {
-                        e.preventDefault()
-                        handleRewrite(t)
-                      }}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={analyzeText}
+          disabled={isAnalyzing}
+        >
+          <Sparkles className="mr-2 size-4" />
+          Analyze
+        </Button>
+
+        <SimpleResearchPanel
+          documentId={document?.id}
+          currentContent={content}
+          isOpen={isResearchPanelOpen}
+          onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+        />
+
+        <Separator orientation="vertical" className="h-6" />
+
+        <TooltipProvider>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-gray-100 dark:bg-gray-800"
+                      disabled={!hasSelection}
                     >
-                      {t}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Specialized</DropdownMenuLabel>
-                  {CLARITY_TONES.slice(0, 3).map(t => (
-                    <DropdownMenuItem
-                      key={t}
-                      onSelect={e => {
-                        e.preventDefault()
-                        handleRewrite(t)
-                      }}
+                      <Sparkles className="mr-2 size-4" />
+                      Quick Tone
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use Quick Tone</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>
+                  ✨ Phase 2 Tone Collection
+                </DropdownMenuLabel>
+                {[
+                  { tone: "Bold", emoji: "💪" },
+                  { tone: "Witty", emoji: "😄" },
+                  { tone: "Motivational", emoji: "🚀" },
+                  { tone: "Direct", emoji: "🎯" },
+                  { tone: "Professional", emoji: "👔" },
+                  { tone: "Friendly", emoji: "🤝" }
+                ].map(({ tone, emoji }) => (
+                  <DropdownMenuItem
+                    key={tone}
+                    onSelect={e => {
+                      e.preventDefault()
+                      handleRewrite(tone)
+                    }}
+                  >
+                    {emoji} {tone}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-white dark:bg-gray-900"
+                      disabled={!hasSelection}
                     >
-                      {t}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      <Sparkles className="mr-2 size-4" />
+                      AI Enhance
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use AI Enhance</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent className="w-64">
+                <DropdownMenuLabel>📧 Email Subject Lines</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleSubjectLineImprovement("improve")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">✨ Make More Compelling</span>
+                  <span className="text-muted-foreground text-xs">
+                    Rewrite to get more opens
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleSubjectLineImprovement("ab_test")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🔬 Create 3 Test Versions</span>
+                  <span className="text-muted-foreground text-xs">
+                    Different styles for A/B testing
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>🔥 Button Text & CTAs</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleCTAImprovement("improve")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">⚡ Make More Clickable</span>
+                  <span className="text-muted-foreground text-xs">
+                    Improve button text for more clicks
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleCTAImprovement("variations")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🔄 Give Me 5 Options</span>
+                  <span className="text-muted-foreground text-xs">
+                    Different button text variations
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>✍️ Regular Content</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("improve_engagement")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🎭 Make More Interesting</span>
+                  <span className="text-muted-foreground text-xs">
+                    Add hooks and engagement
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("shorten")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">✂️ Make Shorter</span>
+                  <span className="text-muted-foreground text-xs">
+                    Remove fluff, keep key points
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleBodyContentImprovement("structure")
+                  }}
+                  className="flex h-auto flex-col items-start gap-1 py-2"
+                >
+                  <span className="font-medium">🏗️ Reorganize Flow</span>
+                  <span className="text-muted-foreground text-xs">
+                    Better structure and transitions
+                  </span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-              {/* Advanced AI Enhancements */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap border-blue-200 bg-blue-50 px-2 py-1 text-sm text-blue-700 hover:bg-blue-100 disabled:bg-gray-50 disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to use AI enhancements"
-                        : "Enhance selected text with AI"
-                    }
-                  >
-                    ✨ AI Enhance
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56">
-                  <div className="border-b p-2 text-xs text-gray-600">
-                    💡 Works best when you select the specific part to enhance
-                  </div>
-                  <DropdownMenuLabel>📧 Subject Lines</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleSubjectLineImprovement("improve")
-                    }}
-                  >
-                    ✨ Improve for Open Rates
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleSubjectLineImprovement("ab_test")
-                    }}
-                  >
-                    🔬 Generate A/B Variations
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>🔥 Call-to-Actions</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleCTAImprovement("improve")
-                    }}
-                  >
-                    ⚡ Boost Conversions
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleCTAImprovement("variations")
-                    }}
-                  >
-                    🔄 5 CTA Variations
-                  </DropdownMenuItem>
-
-                  <DropdownMenuSeparator />
-                  <DropdownMenuLabel>✍️ Content Quality</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("improve_engagement")
-                    }}
-                  >
-                    🎭 Improve Engagement
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("shorten")
-                    }}
-                  >
-                    ✂️ Make Concise
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleBodyContentImprovement("structure")
-                    }}
-                  >
-                    🏗️ Better Structure
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Content Extension */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isRewriting || !hasSelection}
-                    className="flex items-center gap-1 whitespace-nowrap border-orange-200 bg-orange-50 px-2 py-1 text-sm text-orange-700 hover:bg-orange-100 disabled:bg-gray-50 disabled:opacity-50"
-                    title={
-                      !hasSelection
-                        ? "Select text first to extend content"
-                        : "Extend selected content"
-                    }
-                  >
-                    ➕ Extend
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("continue")
-                    }}
-                  >
-                    ▶️ Continue Writing
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("precede")
-                    }}
-                  >
-                    ◀️ Add Introduction
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={e => {
-                      e.preventDefault()
-                      handleContentExtension("expand_section")
-                    }}
-                  >
-                    🔍 Expand Details
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
-          )}
-        </div>
-
-        {highlights.length > 0 && (
-          <div className="ml-auto flex items-center">
-            <Badge variant="secondary" className="ml-2">
-              {highlights.length} suggestions
-            </Badge>
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-white dark:bg-gray-900"
+                      disabled={!hasSelection}
+                    >
+                      <Sparkles className="mr-2 size-4" />
+                      Extend
+                      <ChevronDown className="ml-2 size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                {!hasSelection && (
+                  <TooltipContent>
+                    <p>Select text to use Extend</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+              <DropdownMenuContent>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("continue")
+                  }}
+                >
+                  ▶️ Continue Writing
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("precede")
+                  }}
+                >
+                  ◀️ Add Introduction
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={e => {
+                    e.preventDefault()
+                    handleContentExtension("expand_section")
+                  }}
+                >
+                  🔍 Expand Details
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-        )}
+        </TooltipProvider>
+
+        <SocialSnippetGenerator
+          document={document}
+          sourceText={content}
+          isOpen={isSocialSnippetOpen}
+          onOpenChange={setIsSocialSnippetOpen}
+        />
       </div>
 
       {highlights.length > 0 && (
-        <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
-          <div className="flex items-center gap-4 text-xs">
-            <span className="font-medium text-gray-600">Legend:</span>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
-              <span className="text-gray-600">Grammar/Spelling</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
-              <span className="text-gray-600">Clarity</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
-              <span className="text-gray-600">Conciseness</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
-              <span className="text-gray-600">Passive Voice</span>
-            </div>
-          </div>
+        <div className="ml-auto flex items-center">
+          <Badge variant="secondary" className="ml-2">
+            {highlights.length} suggestions
+          </Badge>
         </div>
       )}
+
+      <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
+        <div className="flex items-center gap-4 text-xs">
+          <span className="font-medium text-gray-600">Legend:</span>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
+            <span className="text-gray-600">Grammar/Spelling</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
+            <span className="text-gray-600">Clarity</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
+            <span className="text-gray-600">Conciseness</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
+            <span className="text-gray-600">Passive Voice</span>
+          </div>
+        </div>
+      </div>
 
       <div className="relative flex-1 bg-white p-6">
         <div
@@ -2229,112 +2479,94 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       {selectedSuggestion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <Card className="w-full max-w-md">
             <CardContent className="p-6">
-              <div className="mb-4 flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{selectedSuggestion.icon}</span>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-                      {selectedSuggestion.title}
-                    </h3>
-                    <Badge variant="outline" className="mt-1 text-xs">
-                      {selectedSuggestion.type}
-                    </Badge>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedSuggestion(null)}
-                >
-                  <X className="size-4" />
-                </Button>
-              </div>
-
-              <p className="mb-4 text-sm text-gray-700 dark:text-gray-300">
-                {selectedSuggestion.description}
+              <h3 className="text-lg font-semibold">
+                Suggestion: {selectedSuggestion.type}
+              </h3>
+              <p className="mt-2 text-sm text-gray-600">
+                Original:{" "}
+                <span className="font-mono text-red-500">
+                  {selectedSuggestion.originalText}
+                </span>
               </p>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
-                    Original:
-                  </label>
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
-                    <del>{selectedSuggestion.originalText}</del>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-medium text-gray-500 dark:text-gray-300">
-                    Suggested:
-                  </label>
-                  <div className="rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900 dark:border-green-800/50 dark:bg-green-900/20 dark:text-green-200">
-                    <strong>{selectedSuggestion.suggestedText}</strong>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex gap-2">
+              <p className="mt-2 text-sm text-gray-600">
+                Suggestion:{" "}
+                <span className="font-mono text-green-500">
+                  {selectedSuggestion.suggestedText}
+                </span>
+              </p>
+              <p className="mt-4 text-sm">{selectedSuggestion.description}</p>
+              <div className="mt-6 flex justify-end gap-2">
                 <Button
-                  onClick={() => {
-                    const highlight = highlights.find(
-                      h => h.suggestion.id === selectedSuggestion.id
-                    )
-                    if (highlight) applySuggestion(highlight)
-                  }}
-                  className="flex-1"
+                  variant="outline"
+                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
+                >
+                  <X className="mr-2 size-4" />
+                  Dismiss
+                </Button>
+                <Button
+                  onClick={() => applySuggestionById(selectedSuggestion.id)}
                 >
                   <Check className="mr-2 size-4" />
                   Apply
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
-                  className="flex-1"
-                >
-                  Dismiss
-                </Button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <Badge variant="secondary" className="text-xs">
-                  {selectedSuggestion.confidence}% confidence
-                </Badge>
               </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {showDeleteAlert && (
-        <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                Are you sure you want to delete this document?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the
-                document and remove all associated data.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeleting}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
-              >
-                {isDeleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete your
+              document and any associated data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="fixed bottom-4 right-4">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="icon">
+              <Settings className="size-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuLabel>Editor Settings</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <div className="flex items-center justify-between p-2">
+              <Label htmlFor="parallel-analysis">Parallel Analysis</Label>
+              <Switch
+                id="parallel-analysis"
+                checked={useParallelAnalysis}
+                onCheckedChange={setUseParallelAnalysis}
+              />
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {document && (
+        <DocumentShareDialog
+          document={document}
+          isOpen={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          onDocumentUpdate={updatedDocument => {
+            setDocument(updatedDocument)
+          }}
+        />
       )}
     </div>
   )
