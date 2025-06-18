@@ -19,7 +19,8 @@ import {
   Trash2,
   Settings,
   ArrowLeft,
-  ChevronDown
+  ChevronDown,
+  Search
 } from "lucide-react"
 import {
   useState,
@@ -84,7 +85,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { SimpleResearchPanel } from "@/components/simple-research-panel"
+import { ResearchDialog } from "@/components/research-dialog"
 import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
 import { DocumentShareDialog } from "@/components/document-share-dialog"
 import {
@@ -2277,11 +2278,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           Analyze
         </Button>
 
-        <SimpleResearchPanel
-          document={document}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+          className="border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
+        >
+          <Search className="mr-2 size-4" />
+          Research
+        </Button>
+
+        <ResearchDialog
+          documentId={document?.id || ""}
+          currentContent={content}
           isOpen={isResearchPanelOpen}
           onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
-          onAddToBibliography={handleAddToBibliography}
         />
 
         <Separator orientation="vertical" className="h-6" />

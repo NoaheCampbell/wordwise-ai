@@ -486,6 +486,34 @@ interface GeneratedIdea {
   outline?: string
 }
 
+// Map frontend idea types to database enum values
+function mapIdeaTypeToEnum(type: "headline" | "topic" | "outline"): "headline" | "topic_suggestion" | "outline" {
+  switch (type) {
+    case "headline":
+      return "headline"
+    case "topic":
+      return "topic_suggestion"
+    case "outline":
+      return "outline"
+    default:
+      return "topic_suggestion"
+  }
+}
+
+// Map frontend parameter types to internal types
+function mapInputTypeToInternal(type: "headlines" | "topics" | "outlines"): "headline" | "topic" | "outline" {
+  switch (type) {
+    case "headlines":
+      return "headline"
+    case "topics":
+      return "topic"
+    case "outlines":
+      return "outline"
+    default:
+      return "headline"
+  }
+}
+
 /**
  * Generate ideas based on the current content and past document analysis.
  */
@@ -500,6 +528,8 @@ export async function generateIdeasAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
+    const internalType = mapInputTypeToInternal(ideaType)
+
     let prompt = `
 Please generate ${ideaType} based on the following content.
 For each idea, provide a title, a short content/outline, the idea type, a confidence score (0-100), and reasoning.
@@ -512,7 +542,7 @@ Example JSON structure for each idea:
 {
   "title": "Idea Title",
   "content": "A short paragraph for the topic, or a list of bullet points for an outline.",
-  "type": "${ideaType}",
+  "type": "${internalType}",
   "confidence": 90,
   "reasoning": "This idea is good because..."
 }
@@ -562,7 +592,7 @@ export async function saveIdeaAction(
       documentId: documentId,
       title: idea.title,
       content: idea.content,
-      type: idea.type as any
+      type: mapIdeaTypeToEnum(idea.type)
     })
 
     return {
