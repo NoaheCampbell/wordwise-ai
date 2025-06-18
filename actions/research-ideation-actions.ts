@@ -576,6 +576,153 @@ Example JSON structure for each idea:
 }
 
 /**
+ * Generate enhanced strategic ideas based on comprehensive past content analysis
+ */
+export async function generateEnhancedIdeasAction(
+  currentContent: string,
+  enhancedAnalysis: EnhancedDocumentAnalysis,
+  ideaType: "headlines" | "topics" | "outlines" = "headlines"
+): Promise<ActionState<GeneratedIdea[]>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    if (!checkResearchRateLimit(userId)) {
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
+    }
+
+    const internalType = mapInputTypeToInternal(ideaType)
+
+    // Build comprehensive context from enhanced analysis
+    const pastTopics = enhancedAnalysis.topTopics.map(t => t.topic).join(", ")
+    const themes = enhancedAnalysis.themes.join(", ")
+    const contentGaps = enhancedAnalysis.contentGaps.join("; ")
+    const recentDocuments = enhancedAnalysis.analyzedDocuments
+      .slice(0, 5)
+      .map(doc => `"${doc.title}" (${doc.mainTopics.join(", ")})`)
+      .join("; ")
+
+    let prompt = ""
+
+    if (ideaType === "headlines") {
+      prompt = `
+You are a strategic content creator. Generate compelling newsletter headlines that avoid oversaturated topics and fill content gaps.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 5-7 unique headline ideas
+- Avoid topics already heavily covered (${pastTopics})
+- Focus on filling identified content gaps
+- Make headlines compelling and click-worthy
+- Ensure each headline offers a fresh perspective
+- Include confidence score based on uniqueness and gap-filling potential
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Compelling headline that fills a content gap",
+  "content": "Brief description of what this headline would cover and why it's strategically valuable",
+  "type": "headline",
+  "confidence": 85,
+  "reasoning": "This fills the gap in [specific area] and offers a fresh angle on [topic] that you haven't covered extensively"
+}
+`
+    } else if (ideaType === "topics") {
+      prompt = `
+You are a strategic content strategist. Generate topic suggestions that expand into underexplored areas based on comprehensive content analysis.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 5-7 strategic topic areas to explore
+- Focus on topics that complement but don't duplicate past work
+- Address identified content gaps systematically
+- Consider emerging trends in your established themes
+- Provide topics that can generate multiple pieces of content
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Strategic topic area to explore",
+  "content": "Detailed explanation of this topic area, why it's strategically important, what subtopics it includes, and how it connects to your existing themes while filling gaps",
+  "type": "topic",
+  "confidence": 90,
+  "reasoning": "This topic strategically fills gaps in [area] while building on your strength in [theme]. It offers multiple content opportunities and addresses an underexplored area in your content portfolio"
+}
+`
+    } else if (ideaType === "outlines") {
+      prompt = `
+You are a strategic content planner. Generate detailed content outlines that leverage your past content insights to create comprehensive, gap-filling pieces.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 4-6 detailed content outlines
+- Each outline should address a specific content gap
+- Build on your established expertise while exploring new angles
+- Include specific sections, key points, and strategic positioning
+- Make outlines comprehensive enough to guide full content creation
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Comprehensive content piece title",
+  "content": "Detailed outline including: 1. Introduction strategy, 2. Main sections with key points, 3. How this connects to your past work, 4. What new ground it covers, 5. Target audience considerations, 6. Call-to-action suggestions",
+  "type": "outline",
+  "confidence": 88,
+  "reasoning": "This outline strategically addresses the gap in [area] while leveraging your established authority in [theme]. It provides a comprehensive framework for creating content that both builds on your expertise and explores new territory"
+}
+`
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
+    })
+
+    const result = JSON.parse(response.choices[0]?.message?.content || '{"ideas":[]}')
+    const ideas: GeneratedIdea[] = (result.ideas || []).map((idea: any) => ({
+      title: idea.title,
+      content: idea.content || idea.outline || "",
+      outline: idea.content || idea.outline || "",
+      type: idea.type,
+      confidence: idea.confidence,
+      reasoning: idea.reasoning
+    }))
+
+    return {
+      isSuccess: true,
+      message: `Generated ${ideas.length} strategic ${ideaType} based on your content analysis`,
+      data: ideas
+    }
+  } catch (error) {
+    console.error("Error generating enhanced ideas:", error)
+    return { isSuccess: false, message: "Failed to generate enhanced ideas" }
+  }
+}
+
+/**
  * Save a generated idea to the database.
  */
 export async function saveIdeaAction(
@@ -609,143 +756,84 @@ export async function saveIdeaAction(
 /**
  * Convert an idea into a new document with recommended sources
  */
-export async function convertIdeaToDocumentAction(
-  ideaId: string,
-  ideaTitle: string,
-  ideaContent: string,
-  ideaType: string
-): Promise<ActionState<{ documentId: string; sourcesFound: number }>> {
-  try {
-    const { userId } = await auth()
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
-    if (!checkResearchRateLimit(userId)) {
-      return {
-        isSuccess: false,
-        message: "Research rate limit exceeded. Please try again later."
-      }
-    }
-
-    // Generate document content based on idea type
-    let documentContent = ""
-    let documentTitle = ideaTitle
-
-    if (ideaType === "headline") {
-      documentContent = `# ${ideaTitle}
+// Quick enhanced content generation (synchronous, no AI calls)
+function generateQuickEnhancedContent(ideaTitle: string, ideaContent: string, ideaType: string): string {
+  if (ideaType === "headline") {
+    return `# ${ideaTitle}
 
 ## Introduction
 ${ideaContent}
 
-<!-- Expand on the headline with compelling opening that hooks the reader -->
-
 ## Key Points
-- <!-- Main argument or insight #1 -->
-- <!-- Supporting evidence or example -->
-- <!-- Main argument or insight #2 -->
-- <!-- Supporting evidence or example -->
-- <!-- Main argument or insight #3 -->
-- <!-- Supporting evidence or example -->
+- [Add your main arguments and insights here]
+- [Supporting evidence or examples]
+- [Additional key points]
 
 ## Evidence & Research
-<!-- Add credible sources, statistics, expert quotes, or case studies that support your headline -->
+[Add credible sources, statistics, expert quotes, or case studies]
 
 ## Implications
-<!-- Discuss what this means for your audience - why should they care? -->
+[Discuss what this means for your audience - why should they care?]
 
 ## Conclusion
-<!-- Tie everything together and reinforce the main message from your headline -->
+[Tie everything together and reinforce the main message]
 
 ## Call to Action
-<!-- What do you want readers to do after reading this? -->
+[What do you want readers to do after reading this?]
 
 ---
 *Research sources will be automatically added below as you find them.*`
-    } else if (ideaType === "topic_suggestion") {
-      documentContent = `# ${ideaTitle}
+  } else if (ideaType === "topic_suggestion") {
+    return `# ${ideaTitle}
 
 ## Executive Summary
 ${ideaContent}
 
-<!-- Provide a comprehensive overview of this topic in 2-3 paragraphs -->
-
 ## Background & Context
-<!-- Historical context, current state, why this topic matters now -->
+[Historical context, current state, why this topic matters now]
 
 ## Key Themes & Trends
 ### Theme 1: [Insert Theme]
-<!-- Analysis of first major theme -->
+[Analysis of first major theme]
 
 ### Theme 2: [Insert Theme]  
-<!-- Analysis of second major theme -->
+[Analysis of second major theme]
 
 ### Theme 3: [Insert Theme]
-<!-- Analysis of third major theme -->
+[Analysis of third major theme]
 
 ## Stakeholders & Perspectives
 ### Primary Stakeholders
-- <!-- Who is most affected by this topic? -->
-- <!-- What are their interests and concerns? -->
+- [Who is most affected by this topic?]
+- [What are their interests and concerns?]
 
 ### Secondary Stakeholders
-- <!-- Who else has a stake in this topic? -->
-- <!-- How might they be impacted? -->
+- [Who else has a stake in this topic?]
+- [How might they be impacted?]
 
 ## Current Challenges & Opportunities
 ### Challenges
-- <!-- Major obstacle #1 -->
-- <!-- Major obstacle #2 -->
-- <!-- Major obstacle #3 -->
+- [Major obstacle #1]
+- [Major obstacle #2]
+- [Major obstacle #3]
 
 ### Opportunities
-- <!-- Potential solution or opportunity #1 -->
-- <!-- Potential solution or opportunity #2 -->
-- <!-- Potential solution or opportunity #3 -->
+- [Potential solution or opportunity #1]
+- [Potential solution or opportunity #2]
+- [Potential solution or opportunity #3]
 
 ## Future Outlook
-<!-- Where is this topic heading? What changes do you anticipate? -->
+[Where is this topic heading? What changes do you anticipate?]
 
 ## Recommendations
-1. <!-- Actionable recommendation #1 -->
-2. <!-- Actionable recommendation #2 -->
-3. <!-- Actionable recommendation #3 -->
+1. [Actionable recommendation #1]
+2. [Actionable recommendation #2]
+3. [Actionable recommendation #3]
 
 ---
 *Research sources will be automatically added below as you find them.*`
-    } else if (ideaType === "outline") {
-      // If the content already looks like an outline, expand it intelligently
-      if (ideaContent.includes('\n-') || ideaContent.includes('\n•') || ideaContent.includes('\n1.')) {
-        documentContent = `# ${ideaTitle}
-
-## Detailed Outline
-${ideaContent}
-
----
-
-## Expanded Content
-
-<!-- For each section in your outline above, expand it below: -->
-
-${ideaContent.split('\n').filter(line => line.trim().length > 0).map(line => {
-  const cleanLine = line.replace(/^[-•*]\s*/, '').replace(/^\d+\.\s*/, '').trim()
-  if (cleanLine) {
-    return `### ${cleanLine}\n<!-- Expand on: ${cleanLine} -->\n<!-- Add details, examples, evidence, and analysis here -->\n`
-  }
-  return ''
-}).join('\n')}
-
-## Supporting Research
-<!-- Add research findings, data, and sources that support each section -->
-
-## Conclusion
-<!-- Synthesize the key insights from all sections above -->
-
----
-*Research sources will be automatically added below as you find them.*`
-      } else {
-        // Generic outline template
-        documentContent = `# ${ideaTitle}
+  } else if (ideaType === "outline") {
+    return `# ${ideaTitle}
 
 ## Initial Framework
 ${ideaContent}
@@ -753,66 +841,62 @@ ${ideaContent}
 ## Detailed Structure
 
 ### Section 1: [Title]
-<!-- Develop the first major section -->
+[Develop the first major section]
 - Key points to cover:
 - Supporting evidence needed:
 - Examples to include:
 
 ### Section 2: [Title]  
-<!-- Develop the second major section -->
+[Develop the second major section]
 - Key points to cover:
 - Supporting evidence needed:
 - Examples to include:
 
 ### Section 3: [Title]
-<!-- Develop the third major section -->
+[Develop the third major section]
 - Key points to cover:
 - Supporting evidence needed:
 - Examples to include:
 
 ## Research Requirements
-<!-- What information do you need to gather to support this outline? -->
+[What information do you need to gather to support this outline?]
 
 ## Next Steps
-1. <!-- First development priority -->
-2. <!-- Second development priority -->
-3. <!-- Third development priority -->
+1. [First development priority]
+2. [Second development priority]
+3. [Third development priority]
 
 ---
 *Research sources will be automatically added below as you find them.*`
-      }
-    } else {
-      documentContent = `# ${ideaTitle}
+  } else {
+    return `# ${ideaTitle}
 
 ${ideaContent}
 
 ## Development Notes
-<!-- Use this space to expand on your initial idea -->
+[Use this space to expand on your initial idea]
 
 ## Research & Evidence
-<!-- Add supporting information, sources, and data -->
+[Add supporting information, sources, and data]
 
 ## Next Steps
-<!-- What actions need to be taken to develop this further? -->
+[What actions need to be taken to develop this further?]
 
 ---
 *Research sources will be automatically added below as you find them.*`
-    }
+  }
+}
 
-    // Create the document first
-    const { createDocumentAction } = await import("@/actions/db/documents-actions")
-    const docResult = await createDocumentAction({
-      title: documentTitle,
-      content: documentContent,
-      isPublic: false
-    })
-
-    if (!docResult.isSuccess) {
-      return { isSuccess: false, message: docResult.message }
-    }
-
-    const newDocumentId = docResult.data.id
-
+// Background function for source finding and cleanup
+async function findSourcesAndCleanupInBackground(
+  documentId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaId: string
+) {
+  try {
+    console.log(`Starting background source finding for document ${documentId}`)
+    
     // Generate keywords for finding sources
     const keywordPrompt = `
 Extract 5-8 relevant keywords for finding research sources about this topic:
@@ -842,17 +926,16 @@ Return only a JSON object with a keywords array:
     }
 
     // Find relevant sources
-    let sourcesFound = 0
     try {
       const sourcesResult = await findRelevantArticlesAction(
         keywords,
-        newDocumentId,
+        documentId,
         [], // no domain restrictions
         [] // no domain exclusions
       )
 
       if (sourcesResult.isSuccess) {
-        sourcesFound = sourcesResult.data.length
+        console.log(`Found ${sourcesResult.data.length} sources for document ${documentId}`)
       }
     } catch (error) {
       console.warn("Could not find sources for new document:", error)
@@ -862,21 +945,69 @@ Return only a JSON object with a keywords array:
     try {
       const { deleteIdeaAction } = await import("@/actions/db/ideas-actions")
       await deleteIdeaAction(ideaId)
+      console.log(`Deleted original idea ${ideaId}`)
     } catch (error) {
       console.warn("Could not delete original idea:", error)
-      // Don't fail the entire operation if idea deletion fails
     }
+
+  } catch (error) {
+    console.error("Error in background source finding:", error)
+  }
+}
+
+export async function convertIdeaToDocumentAction(
+  ideaId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): Promise<ActionState<{ documentId: string; sourcesFound: number }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    if (!checkResearchRateLimit(userId)) {
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
+    }
+
+    // Generate enhanced content immediately (but simplified)
+    let enhancedContent = generateQuickEnhancedContent(ideaTitle, ideaContent, ideaType)
+    
+    // Create document with enhanced content right away
+    const { createDocumentAction } = await import("@/actions/db/documents-actions")
+    const docResult = await createDocumentAction({
+      title: ideaTitle,
+      content: enhancedContent,
+      isPublic: false
+    })
+
+    if (!docResult.isSuccess) {
+      return { isSuccess: false, message: docResult.message }
+    }
+
+    const newDocumentId = docResult.data.id
+
+    // Do source finding and idea cleanup in background (don't await)
+    findSourcesAndCleanupInBackground(newDocumentId, ideaTitle, ideaContent, ideaId).catch((error: any) => {
+      console.error("Background source finding failed:", error)
+    })
 
     return {
       isSuccess: true,
-      message: `Document created successfully with ${sourcesFound} recommended sources`,
-      data: { documentId: newDocumentId, sourcesFound }
+      message: "Document created! Enhanced content is being generated...",
+      data: { documentId: newDocumentId, sourcesFound: 0 }
     }
   } catch (error) {
     console.error("Error converting idea to document:", error)
     return { isSuccess: false, message: "Failed to convert idea to document" }
   }
 }
+
+
 
 // ============================================================================
 // 5B.5 SOCIAL SNIPPET GENERATOR

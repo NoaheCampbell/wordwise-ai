@@ -188,6 +188,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     reloadClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
+    registerGenerateNewIdeas,
     setIsAnalyzing: setProviderIsAnalyzing,
     setCurrentContent,
     setCurrentDocumentId
@@ -555,9 +556,68 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     dismissSuggestion(id)
   }
 
+  // Function to regenerate enhanced analysis
+  const regenerateEnhancedAnalysis = useCallback(async () => {
+    if (!user || !document) {
+      toast.error("No document to analyze")
+      return
+    }
+
+    try {
+      setProviderIsAnalyzing(true)
+      toast.info("Regenerating enhanced analysis...")
+
+      // Import the analysis action
+      const { analyzeDocumentForEnhancedIdeasAction } = await import(
+        "@/actions/research-ideation-actions"
+      )
+
+      // Run the enhanced analysis
+      const result = await analyzeDocumentForEnhancedIdeasAction({
+        title: title,
+        content: contentRef.current,
+        userId: user.id
+      })
+
+      if (result.isSuccess) {
+        // Update the document with the new analysis
+        const { updateDocumentAction } = await import(
+          "@/actions/db/documents-actions"
+        )
+        const updateResult = await updateDocumentAction(
+          document.id,
+          { enhancedAnalysis: result.data },
+          user.id,
+          true // Skip analysis to avoid recursion
+        )
+
+        if (updateResult.isSuccess) {
+          setDocument(updateResult.data)
+          toast.success("Enhanced analysis regenerated successfully!")
+          reloadDocuments()
+        } else {
+          toast.error("Failed to save enhanced analysis")
+        }
+      } else {
+        toast.error("Failed to regenerate enhanced analysis")
+      }
+    } catch (error) {
+      console.error("Error regenerating enhanced analysis:", error)
+      toast.error("Failed to regenerate enhanced analysis")
+    } finally {
+      setProviderIsAnalyzing(false)
+    }
+  }, [user, document, title, setProviderIsAnalyzing, reloadDocuments])
+
   useEffect(() => {
     registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
-  }, [registerSuggestionCallbacks, highlights])
+    registerGenerateNewIdeas(regenerateEnhancedAnalysis)
+  }, [
+    registerSuggestionCallbacks,
+    registerGenerateNewIdeas,
+    highlights,
+    regenerateEnhancedAnalysis
+  ])
 
   // Set up selection change listeners
   useEffect(() => {

@@ -29,6 +29,7 @@ import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
 import {
   generateIdeasAction,
+  generateEnhancedIdeasAction,
   saveIdeaAction,
   analyzePastDocumentsAction
 } from "@/actions/research-ideation-actions"
@@ -75,11 +76,25 @@ export function EnhancedIdeaGenerator({
     setIsGenerating(true)
     setSelectedType(type)
     try {
-      const result = await generateIdeasAction(currentContent, documentId, type)
+      let result
+
+      // Use enhanced generation if we have analysis data, otherwise fall back to basic generation
+      if (enhancedAnalysis) {
+        result = await generateEnhancedIdeasAction(
+          currentContent,
+          enhancedAnalysis,
+          type
+        )
+      } else {
+        result = await generateIdeasAction(currentContent, documentId, type)
+      }
+
       if (result.isSuccess) {
         setGeneratedIdeas(result.data)
         setActiveTab("ideas")
-        toast.success(`Generated ${result.data.length} ${type} ideas`)
+        toast.success(
+          result.message || `Generated ${result.data.length} ${type} ideas`
+        )
       } else {
         toast.error(result.message)
       }
@@ -312,10 +327,26 @@ export function EnhancedIdeaGenerator({
                       Generate New Ideas
                     </h3>
                     <p className="text-muted-foreground mb-6">
-                      Choose what type of ideas to generate based on your
-                      content analysis{" "}
-                      {enhancedAnalysis &&
-                        `(${enhancedAnalysis.analyzedDocuments.length} past documents analyzed)`}
+                      {enhancedAnalysis ? (
+                        <>
+                          Generate strategic ideas based on analysis of{" "}
+                          <strong>
+                            {enhancedAnalysis.analyzedDocuments.length} past
+                            documents
+                          </strong>
+                          ,{" "}
+                          <strong>
+                            {enhancedAnalysis.topTopics.length} key topics
+                          </strong>
+                          , and{" "}
+                          <strong>
+                            {enhancedAnalysis.contentGaps.length} identified
+                            content gaps
+                          </strong>
+                        </>
+                      ) : (
+                        "Choose what type of ideas to generate based on your current content"
+                      )}
                     </p>
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -327,8 +358,9 @@ export function EnhancedIdeaGenerator({
                           <Lightbulb className="text-primary mx-auto mb-3 size-8" />
                           <h4 className="mb-2 font-semibold">Headlines</h4>
                           <p className="text-muted-foreground text-sm">
-                            Compelling newsletter headlines that avoid
-                            over-saturated topics
+                            {enhancedAnalysis
+                              ? "Strategic headlines that fill content gaps and avoid over-covered topics"
+                              : "Compelling newsletter headlines based on your current content"}
                           </p>
                           <Button
                             className="mt-4 w-full"
@@ -356,8 +388,9 @@ export function EnhancedIdeaGenerator({
                           <Target className="text-primary mx-auto mb-3 size-8" />
                           <h4 className="mb-2 font-semibold">Topics</h4>
                           <p className="text-muted-foreground text-sm">
-                            New topic areas that fill gaps in your content
-                            strategy
+                            {enhancedAnalysis
+                              ? "Strategic topic areas that complement your expertise and fill content gaps"
+                              : "New topic areas based on your current content"}
                           </p>
                           <Button
                             className="mt-4 w-full"
@@ -385,8 +418,9 @@ export function EnhancedIdeaGenerator({
                           <BookOpen className="text-primary mx-auto mb-3 size-8" />
                           <h4 className="mb-2 font-semibold">Outlines</h4>
                           <p className="text-muted-foreground text-sm">
-                            Detailed content outlines ready for immediate
-                            execution
+                            {enhancedAnalysis
+                              ? "Comprehensive outlines that leverage your past insights and address content gaps"
+                              : "Detailed content outlines based on your current content"}
                           </p>
                           <Button
                             className="mt-4 w-full"

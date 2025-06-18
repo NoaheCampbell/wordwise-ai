@@ -187,12 +187,12 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
 
       if (result.isSuccess) {
         toast.success(
-          `Document created with ${result.data.sourcesFound} sources!`
+          "Document created! Enhanced outline is being generated..."
         )
-        // Refresh ideas list since the idea was deleted
-        await loadIdeas()
-        setIsOpen(false) // Close dialog
+        setIsOpen(false) // Close dialog immediately
         router.push(`/document/${result.data.documentId}`)
+        // Refresh ideas list in background since the idea will be deleted
+        loadIdeas()
       } else {
         toast.error("Failed to convert idea")
       }
