@@ -1,5 +1,3 @@
-"use server"
-
 import { db } from "@/db/db"
 import { documentsTable } from "@/db/schema"
 import { and, eq } from "drizzle-orm"
@@ -41,10 +39,9 @@ export default async function PublicDocumentPage({
             </p>
           </header>
 
-          <div
-            className="prose prose-lg max-w-none"
-            dangerouslySetInnerHTML={{ __html: document.content }}
-          />
+          <div className="prose prose-lg max-w-none whitespace-pre-wrap leading-relaxed text-gray-800">
+            {document.content}
+          </div>
         </article>
       </main>
     </div>
