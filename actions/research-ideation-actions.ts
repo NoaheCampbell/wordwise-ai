@@ -568,10 +568,34 @@ export async function generateSocialSnippetsAction(
     }
 
     if (!checkResearchRateLimit(userId)) {
-      return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
     }
 
-    const platforms = platform === "all" ? ["twitter", "linkedin", "instagram"] : [platform]
+    let documentContent = sourceText
+    let shareableLink = ""
+
+    if (documentId) {
+      const document = await db.query.documents.findFirst({
+        where: eq(documentsTable.id, documentId)
+      })
+      if (document?.isPublic && document.slug) {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL
+        if (!appUrl) {
+          console.warn(
+            "NEXT_PUBLIC_APP_URL is not set. Cannot create shareable links."
+          )
+        } else {
+          shareableLink = `${appUrl}/view/${document.slug}`
+          documentContent += `\n\nRead more here: ${shareableLink}`
+        }
+      }
+    }
+
+    const platforms =
+      platform === "all" ? ["twitter", "linkedin", "instagram"] : [platform]
     const snippets: SocialVariation[] = []
 
     for (const plt of platforms) {
@@ -588,7 +612,7 @@ Create a Twitter post from this content. Requirements:
 - Engaging and conversational tone
 - Include a call-to-action or question when appropriate
 
-Content: "${sourceText}"
+Content: "${documentContent}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the tweet text
@@ -607,7 +631,7 @@ Create a LinkedIn post from this content. Requirements:
 - 2-4 relevant hashtags
 - Structure with line breaks for readability
 
-Content: "${sourceText}"
+Content: "${documentContent}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the LinkedIn post text
@@ -627,7 +651,7 @@ Create an Instagram caption from this content. Requirements:
 - 3-5 hashtags
 - Structure with line breaks
 
-Content: "${sourceText}"
+Content: "${documentContent}"
 
 Generate 3 variations. Return JSON with "variations" array. Each variation should have:
 - content: the Instagram caption
@@ -646,21 +670,25 @@ Variations:`
         response_format: { type: "json_object" }
       })
 
-      const result = JSON.parse(response.choices[0]?.message?.content || '{"variations": []}')
-      const platformVariations = (result.variations || []).map((variation: any, index: number) => ({
-        platform: plt as any,
-        content: variation.content,
-        characterCount: variation.characterCount || variation.content.length,
-        hashtags: variation.hashtags || [],
-        variation: index + 1
-      }))
+      const result = JSON.parse(
+        response.choices[0]?.message?.content || '{"variations": []}'
+      )
+      const platformVariations = (result.variations || []).map(
+        (variation: any, index: number) => ({
+          platform: plt as any,
+          content: variation.content,
+          characterCount: variation.characterCount || variation.content.length,
+          hashtags: variation.hashtags || [],
+          variation: index + 1
+        })
+      )
 
       snippets.push(...platformVariations)
     }
 
     // Save snippets to database if documentId provided
     if (documentId && snippets.length > 0) {
-      const savePromises = snippets.map(snippet => 
+      const savePromises = snippets.map(snippet =>
         createSocialSnippetAction({
           documentId,
           originalText: sourceText,

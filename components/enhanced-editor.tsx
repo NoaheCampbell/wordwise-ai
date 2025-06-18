@@ -86,6 +86,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { SimpleResearchPanel } from "@/components/simple-research-panel"
 import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
+import { DocumentShareDialog } from "@/components/document-share-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -206,6 +207,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [showDeleteAlert, setShowDeleteAlert] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<AISuggestion | null>(null)
   const textareaRef = useRef<HTMLDivElement>(null)
@@ -2062,6 +2064,15 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {document && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowShareDialog(true)}
+            >
+              Share
+            </Button>
+          )}
           <Button
             onClick={handleSave}
             disabled={isSaving}
@@ -2546,6 +2557,17 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {document && (
+        <DocumentShareDialog
+          document={document}
+          isOpen={showShareDialog}
+          onOpenChange={setShowShareDialog}
+          onDocumentUpdate={updatedDocument => {
+            setDocument(updatedDocument)
+          }}
+        />
+      )}
     </div>
   )
 }

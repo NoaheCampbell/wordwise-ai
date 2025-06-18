@@ -10,7 +10,8 @@ import {
   timestamp,
   uuid,
   jsonb,
-  integer
+  integer,
+  boolean
 } from "drizzle-orm/pg-core"
 
 export const documentsTable = pgTable("documents", {
@@ -18,6 +19,8 @@ export const documentsTable = pgTable("documents", {
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  isPublic: boolean("is_public").notNull().default(false),
+  slug: text("slug").unique(),
   version: integer("version").notNull().default(1),
   parentDocumentId: uuid("parent_document_id"), // For version history
   tags: jsonb("tags").$type<string[]>().default([]),

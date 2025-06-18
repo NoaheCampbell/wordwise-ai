@@ -6,6 +6,16 @@ import { ActionState } from "@/types"
 import { eq, and } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 
+function generateSlug(title: string): string {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "") // Remove special characters
+    .replace(/\s+/g, "-") // Replace spaces with hyphens
+    .replace(/-+/g, "-") // Replace multiple hyphens with a single one
+    .trim()
+  return `${slug}-${Math.random().toString(36).substring(2, 8)}` // Add random suffix for uniqueness
+}
+
 export async function createDocumentAction(
   document: Omit<InsertDocument, "userId">
 ): Promise<ActionState<SelectDocument>> {
@@ -103,6 +113,51 @@ export async function updateDocumentAction(
   } catch (error) {
     console.error("Error updating document:", error)
     return { isSuccess: false, message: "Failed to update document" }
+  }
+}
+
+export async function updateDocumentSharingAction(
+  id: string,
+  isPublic: boolean
+): Promise<ActionState<SelectDocument>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const document = await db.query.documents.findFirst({
+      where: and(eq(documentsTable.id, id), eq(documentsTable.userId, userId))
+    })
+
+    if (!document) {
+      return { isSuccess: false, message: "Document not found" }
+    }
+
+    let slug = document.slug
+    if (isPublic && !slug) {
+      slug = generateSlug(document.title)
+    } else if (!isPublic) {
+      slug = null // Remove slug when making private
+    }
+
+    const [updatedDocument] = await db
+      .update(documentsTable)
+      .set({ isPublic, slug })
+      .where(eq(documentsTable.id, id))
+      .returning()
+
+    return {
+      isSuccess: true,
+      message: "Document sharing settings updated successfully",
+      data: updatedDocument
+    }
+  } catch (error) {
+    console.error("Error updating document sharing settings:", error)
+    return {
+      isSuccess: false,
+      message: "Failed to update document sharing settings"
+    }
   }
 }
 
