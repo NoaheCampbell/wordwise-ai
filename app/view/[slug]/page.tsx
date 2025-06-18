@@ -4,15 +4,15 @@ import { and, eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 
 interface PublicDocumentPageProps {
-  params: {
+  params: Promise<{
     slug: string
-  }
+  }>
 }
 
 export default async function PublicDocumentPage({
   params
 }: PublicDocumentPageProps) {
-  const { slug } = params
+  const { slug } = await params
 
   if (!slug) {
     notFound()
