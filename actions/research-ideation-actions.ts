@@ -113,7 +113,7 @@ Content:
 }
 
 /**
- * Find relevant articles using real search APIs
+ * Find relevant articles using OpenAI's web search.
  */
 export async function findRelevantArticlesAction(
   keywords: string[],
@@ -126,149 +126,88 @@ export async function findRelevantArticlesAction(
     }
 
     if (!checkResearchRateLimit(userId)) {
-      return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
     }
 
-    const searchQuery = keywords.slice(0, 4).join(" ")
+    const searchQuery = keywords.join(" ")
     const sources: ExternalSource[] = []
 
-    // Try multiple free search approaches
+    const prompt = `
+Please perform a web search to find relevant articles and resources for the following query: "${searchQuery}"
+
+Return a JSON object with a "sources" array. Each object in the array should have the following structure:
+{
+  "title": "Article Title",
+  "url": "https://example.com/article",
+  "summary": "A brief summary of the article content.",
+  "sourceType": "article"
+}
+
+Please provide at least 5 high-quality sources. The summary should be concise and informative. The output must be only the raw JSON object.
+`
+
+    const response = await openai.responses.create({
+      model: "gpt-4o",
+      tools: [{ type: "web_search_preview" }],
+      input: prompt,
+      instructions:
+        "You are a research assistant. Your task is to find relevant online articles, blog posts, and other resources based on the user's query and return them in the specified JSON format."
+    })
+
+    const responseText = response.output_text
+    let result
+
     try {
-      // Method 1: Use Bing Search API (has a free tier)
-      const bingUrl = `https://api.bing.microsoft.com/v7.0/search?q=${encodeURIComponent(searchQuery)}&count=5&responseFilter=Webpages`
-      
-      // Method 2: Use DuckDuckGo Instant Answer API (free)
-      const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(searchQuery)}&format=json&no_html=1&skip_disambig=1`
-      
-      try {
-        const ddgResponse = await fetch(ddgUrl)
-        const ddgData = await ddgResponse.json()
-        
-        if (ddgData && ddgData.RelatedTopics && ddgData.RelatedTopics.length > 0) {
-          ddgData.RelatedTopics.slice(0, 3).forEach((topic: any, index: number) => {
-            if (topic.FirstURL && topic.Text) {
-              sources.push({
-                title: topic.Text.substring(0, 100) + (topic.Text.length > 100 ? "..." : ""),
-                url: topic.FirstURL,
-                summary: topic.Text.substring(0, 200) + (topic.Text.length > 200 ? "..." : ""),
-                snippet: `[${topic.Text.substring(0, 50)}...](${topic.FirstURL})`,
-                keywords: keywords,
-                relevanceScore: 85 - (index * 5),
-                sourceType: "article"
-              })
-            }
-          })
-        }
-      } catch (ddgError) {
-        console.log("DuckDuckGo API failed, trying alternative approach")
+      const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/)
+      if (jsonMatch && jsonMatch[1]) {
+        result = JSON.parse(jsonMatch[1])
+      } else {
+        result = JSON.parse(responseText)
       }
-
-      // Method 3: If no results yet, use Wikipedia API for educational content
-      if (sources.length === 0) {
-        const wikiUrl = `https://en.wikipedia.org/api/rest_v1/page/search?q=${encodeURIComponent(searchQuery)}&limit=3`
-        
-        try {
-          const wikiResponse = await fetch(wikiUrl)
-          if (wikiResponse.ok) {
-            const wikiData = await wikiResponse.json()
-            
-            if (wikiData.pages && wikiData.pages.length > 0) {
-              wikiData.pages.forEach((page: any, index: number) => {
-                sources.push({
-                  title: page.title,
-                  url: `https://en.wikipedia.org/wiki/${encodeURIComponent(page.key)}`,
-                  summary: page.description || page.excerpt || `Wikipedia article about ${page.title}`,
-                  snippet: `[${page.title}](https://en.wikipedia.org/wiki/${encodeURIComponent(page.key)}) - ${page.description || 'Wikipedia article'}`,
-                  keywords: keywords,
-                  relevanceScore: 90 - (index * 5),
-                  sourceType: "wikipedia"
-                })
-              })
-            }
-          }
-        } catch (wikiError) {
-          console.log("Wikipedia API failed")
-        }
+    } catch (e) {
+      console.error("Failed to parse JSON from OpenAI response", e, responseText)
+      return {
+        isSuccess: false,
+        message: "Failed to parse search results from AI."
       }
-
-      // Method 4: Use Hacker News Search API for tech-related content
-      if (sources.length < 3) {
-        const hnUrl = `https://hn.algolia.com/api/v1/search?query=${encodeURIComponent(searchQuery)}&tags=story&hitsPerPage=2`
-        
-        try {
-          const hnResponse = await fetch(hnUrl)
-          if (hnResponse.ok) {
-            const hnData = await hnResponse.json()
-            
-            if (hnData.hits && hnData.hits.length > 0) {
-              hnData.hits.forEach((hit: any, index: number) => {
-                if (hit.url) {
-                  sources.push({
-                    title: hit.title,
-                    url: hit.url,
-                    summary: hit.url.includes('github.com') ? `GitHub repository: ${hit.title}` : `Article: ${hit.title}`,
-                    snippet: `[${hit.title}](${hit.url}) - Discussed on Hacker News`,
-                    keywords: keywords,
-                    relevanceScore: 80 - (index * 5),
-                    sourceType: "news"
-                  })
-                }
-              })
-            }
-          }
-        } catch (hnError) {
-          console.log("Hacker News API failed")
-        }
-      }
-
-      // Method 5: Use Reddit Search API for community discussions
-      if (sources.length < 4) {
-        const redditUrl = `https://www.reddit.com/search.json?q=${encodeURIComponent(searchQuery)}&limit=2&sort=relevance`
-        
-        try {
-          const redditResponse = await fetch(redditUrl, {
-            headers: {
-              'User-Agent': 'WordWise-Research-Bot/1.0'
-            }
-          })
-          if (redditResponse.ok) {
-            const redditData = await redditResponse.json()
-            
-            if (redditData.data && redditData.data.children && redditData.data.children.length > 0) {
-              redditData.data.children.forEach((child: any, index: number) => {
-                const post = child.data
-                if (post.url && !post.url.includes('reddit.com')) {
-                  sources.push({
-                    title: post.title,
-                    url: post.url,
-                    summary: post.selftext ? post.selftext.substring(0, 200) + "..." : `Discussion: ${post.title}`,
-                    snippet: `[${post.title}](${post.url}) - From r/${post.subreddit}`,
-                    keywords: keywords,
-                    relevanceScore: 75 - (index * 5),
-                    sourceType: "discussion"
-                  })
-                }
-              })
-            }
-          }
-        } catch (redditError) {
-          console.log("Reddit API failed")
-        }
-      }
-
-    } catch (apiError) {
-      console.error("All search APIs failed:", apiError)
-      return { isSuccess: false, message: "Unable to search for articles at this time. Please try again later." }
     }
 
-    // If we still have no sources, return an error
+    if (result.sources && Array.isArray(result.sources)) {
+      result.sources.forEach((source: any, index: number) => {
+        if (source.url && source.title && source.summary) {
+          try {
+            const urlHost = new URL(source.url).hostname
+            sources.push({
+              title: source.title,
+              url: source.url,
+              summary: source.summary,
+              snippet: `[${source.title}](${source.url}) - ${urlHost}`,
+              keywords: keywords,
+              relevanceScore: 95 - index * 5,
+              sourceType: source.sourceType || "article"
+            })
+          } catch (e) {
+            console.warn(`Invalid URL found in search result: ${source.url}`)
+          }
+        }
+      })
+    }
+
+    // If no sources found, return an error.
     if (sources.length === 0) {
-      return { isSuccess: false, message: "No relevant articles found. Try using different keywords or topics." }
+      return {
+        isSuccess: false,
+        message:
+          "No articles found using web search. Please try different keywords."
+      }
     }
 
     // Save sources to database if documentId provided
     if (documentId && sources.length > 0) {
-      const savePromises = sources.map(source => 
+      const savePromises = sources.map(source =>
         createResearchSourceAction({
           documentId,
           title: source.title,
@@ -280,7 +219,7 @@ export async function findRelevantArticlesAction(
           sourceType: source.sourceType
         })
       )
-      
+
       // Execute saves in parallel but don't wait for completion
       Promise.all(savePromises).catch(error => {
         console.error("Error saving research sources:", error)
@@ -289,12 +228,21 @@ export async function findRelevantArticlesAction(
 
     return {
       isSuccess: true,
-      message: `Found ${sources.length} relevant articles from multiple sources`,
+      message: `Found ${sources.length} relevant articles`,
       data: sources
     }
   } catch (error) {
     console.error("Error finding relevant articles:", error)
-    return { isSuccess: false, message: "Failed to find relevant articles" }
+    if (error instanceof OpenAI.APIError) {
+      return {
+        isSuccess: false,
+        message: `Failed to find relevant articles: ${error.message}`
+      }
+    }
+    return {
+      isSuccess: false,
+      message: "Failed to find relevant articles due to an unexpected error."
+    }
   }
 }
 
