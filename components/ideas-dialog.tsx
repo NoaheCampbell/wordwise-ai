@@ -186,7 +186,11 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
       )
 
       if (result.isSuccess) {
-        toast.success("Idea converted to document!")
+        toast.success(
+          `Document created with ${result.data.sourcesFound} sources!`
+        )
+        // Refresh ideas list since the idea was deleted
+        await loadIdeas()
         setIsOpen(false) // Close dialog
         router.push(`/document/${result.data.documentId}`)
       } else {

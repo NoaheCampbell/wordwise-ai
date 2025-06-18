@@ -858,6 +858,15 @@ Return only a JSON object with a keywords array:
       console.warn("Could not find sources for new document:", error)
     }
 
+    // Remove the idea from the database since it's now a document
+    try {
+      const { deleteIdeaAction } = await import("@/actions/db/ideas-actions")
+      await deleteIdeaAction(ideaId)
+    } catch (error) {
+      console.warn("Could not delete original idea:", error)
+      // Don't fail the entire operation if idea deletion fails
+    }
+
     return {
       isSuccess: true,
       message: `Document created successfully with ${sourcesFound} recommended sources`,
