@@ -101,6 +101,10 @@ export interface IdeaGenerationContext {
 export interface IdeaStats {
   totalIdeas: number
   totalSources: number
+  recentIdeas: number
+  topTopics: Array<{ topic: string; count: number }>
+  contentGaps: string[]
+  suggestedFocusAreas: string[]
 }
 
 export interface ResearchPanelProps {
