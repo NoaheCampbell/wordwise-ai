@@ -916,6 +916,105 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     await handleRewriteWithValidation(tone)
   }
 
+  // Bibliography management functions
+  const detectBibliographySection = (
+    text: string
+  ): { start: number; end: number } | null => {
+    const bibliographyRegex =
+      /^(Bibliography|References|Sources|Works Cited|Citations?)\s*:?\s*$/im
+    const match = bibliographyRegex.exec(text)
+
+    if (match) {
+      const start = match.index
+      // Find the end of the bibliography section (end of document or next major heading)
+      const afterMatch = text.slice(match.index + match[0].length)
+      const nextSectionMatch = afterMatch.match(
+        /^\n*(?:#{1,6}\s|[A-Z][^:]*:)\s*$/m
+      )
+      const end = nextSectionMatch
+        ? match.index + match[0].length + (nextSectionMatch.index || 0)
+        : text.length
+
+      return { start, end }
+    }
+
+    return null
+  }
+
+  const formatCitation = (article: {
+    title: string
+    url: string
+    summary?: string
+  }): string => {
+    const currentDate = new Date().toISOString().split("T")[0]
+    // Simple citation format: Title. URL (accessed date)
+    return `- ${article.title}. ${article.url} (accessed ${currentDate})`
+  }
+
+  const handleAddToBibliography = async (article: {
+    title: string
+    url: string
+    summary: string
+    relevanceScore: number
+  }) => {
+    const currentText = contentRef.current
+    const citation = formatCitation(article)
+
+    // Check if bibliography already exists
+    const bibliographySection = detectBibliographySection(currentText)
+
+    let newContent: string
+
+    if (bibliographySection) {
+      // Add to existing bibliography
+      const beforeBiblio = currentText.slice(0, bibliographySection.end)
+      const afterBiblio = currentText.slice(bibliographySection.end)
+
+      // Check if citation already exists
+      if (beforeBiblio.includes(article.url)) {
+        toast.info("This source is already in your bibliography")
+        return
+      }
+
+      // Add citation to end of bibliography section
+      const bibliographyContent = beforeBiblio.endsWith("\n")
+        ? beforeBiblio
+        : beforeBiblio + "\n"
+      newContent = bibliographyContent + citation + "\n" + afterBiblio
+    } else {
+      // Create new bibliography section
+      if (currentText.includes(article.url)) {
+        toast.info("This source is already referenced in your document")
+        return
+      }
+
+      // Add bibliography at the end
+      const separator = currentText.endsWith("\n") ? "\n" : "\n\n"
+      newContent = currentText + separator + "Bibliography:\n" + citation + "\n"
+    }
+
+    // Update the document content
+    contentRef.current = newContent
+    setContent(newContent)
+    setContentForWordCount(newContent)
+
+    // Update history
+    setHistory(prevHistory => [...prevHistory, newContent])
+    setCurrentHistoryIndex(prevIndex => prevIndex + 1)
+
+    // Update the visual editor
+    if (textareaRef.current) {
+      isUpdatingFromEffect.current = true
+      textareaRef.current.innerHTML = newContent
+      setCursorPosition(textareaRef.current, newContent.length)
+      queueMicrotask(() => {
+        isUpdatingFromEffect.current = false
+      })
+    }
+
+    toast.success(`Added "${article.title}" to bibliography`)
+  }
+
   // New AI Enhancement Functions
   const handleSubjectLineImprovement = async (
     mode: "improve" | "ab_test" | "audience_specific" | "seasonal"
@@ -2140,23 +2239,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b p-2">
-        <Button variant="ghost" size="icon" onClick={handleUndo}>
+        <Button variant="outline" size="icon" onClick={handleUndo}>
           <Undo className="size-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={handleRedo}>
+        <Button variant="outline" size="icon" onClick={handleRedo}>
           <Redo className="size-4" />
-        </Button>
-        <Button variant="ghost" size="icon" onClick={handleSave}>
-          <Save className="size-4" />
         </Button>
 
         <Separator orientation="vertical" className="h-6" />
 
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
           onClick={analyzeText}
           disabled={isAnalyzing}
+          className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
         >
           <Sparkles className="mr-2 size-4" />
           Analyze
@@ -2167,6 +2264,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           currentContent={content}
           isOpen={isResearchPanelOpen}
           onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+          onAddToBibliography={handleAddToBibliography}
         />
 
         <Separator orientation="vertical" className="h-6" />

@@ -25,7 +25,8 @@ import {
   Copy,
   Sparkles,
   RefreshCw,
-  BookOpen
+  BookOpen,
+  Plus
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
@@ -40,6 +41,7 @@ interface SimpleResearchPanelProps {
   currentContent?: string
   isOpen?: boolean
   onToggle?: () => void
+  onAddToBibliography?: (article: RelevantArticle) => void
 }
 
 interface ContentSummary {
@@ -59,7 +61,8 @@ export function SimpleResearchPanel({
   documentId,
   currentContent = "",
   isOpen = false,
-  onToggle
+  onToggle,
+  onAddToBibliography
 }: SimpleResearchPanelProps) {
   const { user } = useUser()
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -69,6 +72,7 @@ export function SimpleResearchPanel({
     null
   )
   const [articles, setArticles] = useState<RelevantArticle[]>([])
+  const [addedArticles, setAddedArticles] = useState<Set<string>>(new Set())
 
   const handleAnalyzeContent = async () => {
     if (!user) {
@@ -139,9 +143,9 @@ export function SimpleResearchPanel({
     <Dialog open={isOpen} onOpenChange={onToggle}>
       <DialogTrigger asChild>
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="text-gray-700 hover:bg-gray-200"
+          className="border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
         >
           <Search className="mr-2 size-4" />
           Research
@@ -304,14 +308,39 @@ export function SimpleResearchPanel({
                           <Badge variant="outline" className="text-xs">
                             {article.relevanceScore}% relevant
                           </Badge>
-                          <Button
-                            onClick={() => copyToClipboard(article.url)}
-                            size="sm"
-                            variant="outline"
-                            className="h-6 text-xs"
-                          >
-                            Copy URL
-                          </Button>
+                          <div className="flex gap-2">
+                            {onAddToBibliography && (
+                              <Button
+                                onClick={() => {
+                                  onAddToBibliography(article)
+                                  setAddedArticles(prev =>
+                                    new Set(prev).add(article.url)
+                                  )
+                                }}
+                                size="sm"
+                                variant={
+                                  addedArticles.has(article.url)
+                                    ? "default"
+                                    : "outline"
+                                }
+                                disabled={addedArticles.has(article.url)}
+                                className="h-6 text-xs"
+                              >
+                                <Plus className="mr-1 size-3" />
+                                {addedArticles.has(article.url)
+                                  ? "Added"
+                                  : "Add to Bibliography"}
+                              </Button>
+                            )}
+                            <Button
+                              onClick={() => copyToClipboard(article.url)}
+                              size="sm"
+                              variant="outline"
+                              className="h-6 text-xs"
+                            >
+                              Copy URL
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     ))}
