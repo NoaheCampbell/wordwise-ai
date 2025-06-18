@@ -1,6 +1,7 @@
 /*
 <ai_context>
-Contains server actions related to ideas, research sources, and social snippets in the DB.
+Contains server actions related to ideas and research sources in the DB.
+Social snippets are no longer saved - they're ephemeral.
 </ai_context>
 */
 
@@ -14,9 +15,6 @@ import {
   InsertResearchSource,
   SelectResearchSource,
   researchSourcesTable,
-  InsertSocialSnippet,
-  SelectSocialSnippet,
-  socialSnippetsTable
 } from "@/db/schema"
 import { ActionState } from "@/types"
 import { eq, and, desc, count, like, sql } from "drizzle-orm"
@@ -264,92 +262,7 @@ export async function deleteResearchSourceAction(id: string): Promise<ActionStat
   }
 }
 
-// ============================================================================
-// SOCIAL SNIPPETS ACTIONS
-// ============================================================================
-
-export async function createSocialSnippetAction(
-  snippet: Omit<InsertSocialSnippet, "userId">
-): Promise<ActionState<SelectSocialSnippet>> {
-  try {
-    const { userId } = await auth()
-    
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
-    const [newSnippet] = await db.insert(socialSnippetsTable).values({
-      ...snippet,
-      userId
-    }).returning()
-
-    return {
-      isSuccess: true,
-      message: "Social snippet created successfully",
-      data: newSnippet
-    }
-  } catch (error) {
-    console.error("Error creating social snippet:", error)
-    return { isSuccess: false, message: "Failed to create social snippet" }
-  }
-}
-
-export async function getSocialSnippetsAction(
-  documentId?: string,
-  platform?: string
-): Promise<ActionState<SelectSocialSnippet[]>> {
-  try {
-    const { userId } = await auth()
-    
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
-    const snippets = await db.query.socialSnippets.findMany({
-      where: and(
-        eq(socialSnippetsTable.userId, userId),
-        documentId ? eq(socialSnippetsTable.documentId, documentId) : undefined,
-        platform ? eq(socialSnippetsTable.platform, platform as any) : undefined
-      ),
-      orderBy: desc(socialSnippetsTable.createdAt)
-    })
-
-    return {
-      isSuccess: true,
-      message: "Social snippets retrieved successfully",
-      data: snippets
-    }
-  } catch (error) {
-    console.error("Error getting social snippets:", error)
-    return { isSuccess: false, message: "Failed to get social snippets" }
-  }
-}
-
-export async function deleteSocialSnippetAction(id: string): Promise<ActionState<void>> {
-  try {
-    const { userId } = await auth()
-    
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
-    await db
-      .delete(socialSnippetsTable)
-      .where(and(
-        eq(socialSnippetsTable.id, id),
-        eq(socialSnippetsTable.userId, userId)
-      ))
-
-    return {
-      isSuccess: true,
-      message: "Social snippet deleted successfully",
-      data: undefined
-    }
-  } catch (error) {
-    console.error("Error deleting social snippet:", error)
-    return { isSuccess: false, message: "Failed to delete social snippet" }
-  }
-}
+// Social snippets are no longer saved to database - they're ephemeral
 
 // ============================================================================
 // SEARCH AND ANALYTICS ACTIONS
@@ -390,7 +303,6 @@ export async function searchIdeasAction(
 export async function getIdeaStatsAction(): Promise<ActionState<{
   totalIdeas: number
   totalSources: number
-  totalSocialSnippets: number
   recentIdeas: number
   topTopics: Array<{ topic: string; count: number }>
   contentGaps: string[]
@@ -416,10 +328,7 @@ export async function getIdeaStatsAction(): Promise<ActionState<{
       .from(researchSourcesTable)
       .where(eq(researchSourcesTable.userId, userId))
 
-    const [snippetCount] = await db
-      .select({ count: count() })
-      .from(socialSnippetsTable)
-      .where(eq(socialSnippetsTable.userId, userId))
+    // Social snippets no longer tracked
 
     // Get recent ideas (last 7 days)
     const sevenDaysAgo = new Date()
@@ -472,7 +381,6 @@ export async function getIdeaStatsAction(): Promise<ActionState<{
     const stats = {
       totalIdeas: ideaCount.count,
       totalSources: sourceCount.count,
-      totalSocialSnippets: snippetCount.count,
       recentIdeas: recentCount.count,
       topTopics,
       contentGaps: [], // TODO: Implement content gap analysis
@@ -488,4 +396,37 @@ export async function getIdeaStatsAction(): Promise<ActionState<{
     console.error("Error getting idea stats:", error)
     return { isSuccess: false, message: "Failed to get idea statistics" }
   }
-} 
+}
+
+// ============================================================================
+// CLEANUP ACTIONS
+// ============================================================================
+
+export async function cleanupSocialIdeasAction(): Promise<ActionState<{ deletedCount: number }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Delete all ideas with type 'social' since they should be in social_snippets table instead
+    const deletedIdeas = await db
+      .delete(ideasTable)
+      .where(and(
+        eq(ideasTable.userId, userId),
+        eq(ideasTable.type, "social")
+      ))
+      .returning()
+
+    return {
+      isSuccess: true,
+      message: `Cleaned up ${deletedIdeas.length} incorrectly saved social ideas`,
+      data: { deletedCount: deletedIdeas.length }
+    }
+  } catch (error) {
+    console.error("Error cleaning up social ideas:", error)
+    return { isSuccess: false, message: "Failed to clean up social ideas" }
+  }
+}
+
+// Social snippets cleanup no longer needed - they're not saved to database 

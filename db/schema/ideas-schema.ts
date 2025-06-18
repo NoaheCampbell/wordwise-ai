@@ -1,6 +1,7 @@
 /*
 <ai_context>
-Schema for storing research ideas, external sources, and social media snippets.
+Schema for storing research ideas and external sources.
+Social snippets are no longer saved to database - they're ephemeral.
 </ai_context>
 */
 
@@ -24,13 +25,7 @@ export const ideaTypeEnum = pgEnum("idea_type", [
   "content_idea"
 ])
 
-export const socialPlatformEnum = pgEnum("social_platform", [
-  "twitter",
-  "linkedin",
-  "instagram",
-  "facebook",
-  "general"
-])
+// Social platform enum removed - social snippets are no longer saved
 
 export const ideasTable = pgTable("ideas", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -81,30 +76,8 @@ export const researchSourcesTable = pgTable("research_sources", {
     .$onUpdate(() => new Date())
 })
 
-export const socialSnippetsTable = pgTable("social_snippets", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: text("user_id").notNull(),
-  documentId: uuid("document_id").references(() => documentsTable.id, {
-    onDelete: "cascade"
-  }),
-  originalText: text("original_text").notNull(), // The excerpt from the document
-  platform: socialPlatformEnum("platform").notNull(),
-  content: text("content").notNull(), // Generated social media post
-  characterCount: integer("character_count").notNull(),
-  hashtags: jsonb("hashtags").$type<string[]>().default([]),
-  variation: integer("variation").default(1), // For multiple variations of same post
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date())
-})
-
 export type InsertIdea = typeof ideasTable.$inferInsert
 export type SelectIdea = typeof ideasTable.$inferSelect
 
 export type InsertResearchSource = typeof researchSourcesTable.$inferInsert
 export type SelectResearchSource = typeof researchSourcesTable.$inferSelect
-
-export type InsertSocialSnippet = typeof socialSnippetsTable.$inferInsert
-export type SelectSocialSnippet = typeof socialSnippetsTable.$inferSelect

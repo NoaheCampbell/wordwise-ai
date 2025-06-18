@@ -24,16 +24,12 @@ export interface Idea {
   type:
     | "headline"
     | "outline"
-    | "social"
     | "research_source"
     | "topic_suggestion"
     | "content_idea"
   title: string
   content: string
   metadata?: {
-    platform?: string
-    characterCount?: number
-    hashtags?: string[]
     sourceUrl?: string
     keywords?: string[]
     confidence?: number
@@ -44,16 +40,7 @@ export interface Idea {
   updatedAt: Date
 }
 
-export interface SocialSnippet {
-  id: string
-  originalText: string
-  platform: "twitter" | "linkedin" | "instagram" | "facebook" | "general"
-  content: string
-  characterCount: number
-  hashtags: string[]
-  variation: number
-  createdAt: Date
-}
+// SocialSnippet interface removed - social snippets are no longer saved
 
 export interface GeneratedIdea {
   title: string

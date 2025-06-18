@@ -10,7 +10,7 @@ Includes smart source finding, idea generation, and social snippet creation.
 import { ActionState } from "@/types"
 import OpenAI from "openai"
 import { auth } from "@clerk/nextjs/server"
-import { createIdeaAction, createResearchSourceAction, createSocialSnippetAction } from "@/actions/db/ideas-actions"
+import { createIdeaAction, createResearchSourceAction } from "@/actions/db/ideas-actions"
 import { db } from "@/db/db"
 import { documentsTable, SelectDocument } from "@/db/schema"
 import { eq } from "drizzle-orm"
@@ -606,6 +606,112 @@ export async function saveIdeaAction(
   }
 }
 
+/**
+ * Convert an idea into a new document with recommended sources
+ */
+export async function convertIdeaToDocumentAction(
+  ideaId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): Promise<ActionState<{ documentId: string; sourcesFound: number }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    if (!checkResearchRateLimit(userId)) {
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
+    }
+
+    // Generate document content based on idea type
+    let documentContent = ""
+    let documentTitle = ideaTitle
+
+    if (ideaType === "headline") {
+      documentContent = `# ${ideaTitle}\n\n${ideaContent}\n\n<!-- Add your content here -->`
+    } else if (ideaType === "topic_suggestion") {
+      documentContent = `# ${ideaTitle}\n\n## Overview\n${ideaContent}\n\n## Key Points\n\n<!-- Add key points here -->\n\n## Research Notes\n\n<!-- Add research notes here -->`
+    } else if (ideaType === "outline") {
+      documentContent = `# ${ideaTitle}\n\n## Outline\n${ideaContent}\n\n## Content\n\n<!-- Expand on each section of the outline -->`
+    } else {
+      documentContent = `# ${ideaTitle}\n\n${ideaContent}\n\n<!-- Add your content here -->`
+    }
+
+    // Create the document first
+    const { createDocumentAction } = await import("@/actions/db/documents-actions")
+    const docResult = await createDocumentAction({
+      title: documentTitle,
+      content: documentContent,
+      isPublic: false
+    })
+
+    if (!docResult.isSuccess) {
+      return { isSuccess: false, message: docResult.message }
+    }
+
+    const newDocumentId = docResult.data.id
+
+    // Generate keywords for finding sources
+    const keywordPrompt = `
+Extract 5-8 relevant keywords for finding research sources about this topic:
+
+Title: ${ideaTitle}
+Content: ${ideaContent}
+
+Return only a JSON object with a keywords array:
+{"keywords": ["keyword1", "keyword2", "keyword3"]}
+`
+
+    const keywordResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: keywordPrompt }],
+      temperature: 0.3,
+      max_tokens: 100,
+      response_format: { type: "json_object" }
+    })
+
+    let keywords: string[] = []
+    try {
+      const keywordResult = JSON.parse(keywordResponse.choices[0]?.message?.content || '{"keywords": []}')
+      keywords = keywordResult.keywords || []
+    } catch (e) {
+      // Fallback keywords based on title and content
+      keywords = [ideaTitle, ...ideaContent.split(" ").slice(0, 5)]
+    }
+
+    // Find relevant sources
+    let sourcesFound = 0
+    try {
+      const sourcesResult = await findRelevantArticlesAction(
+        keywords,
+        newDocumentId,
+        [], // no domain restrictions
+        [] // no domain exclusions
+      )
+
+      if (sourcesResult.isSuccess) {
+        sourcesFound = sourcesResult.data.length
+      }
+    } catch (error) {
+      console.warn("Could not find sources for new document:", error)
+    }
+
+    return {
+      isSuccess: true,
+      message: `Document created successfully with ${sourcesFound} recommended sources`,
+      data: { documentId: newDocumentId, sourcesFound }
+    }
+  } catch (error) {
+    console.error("Error converting idea to document:", error)
+    return { isSuccess: false, message: "Failed to convert idea to document" }
+  }
+}
+
 // ============================================================================
 // 5B.5 SOCIAL SNIPPET GENERATOR
 // ============================================================================
@@ -751,37 +857,7 @@ Variations:`
       snippets.push(...platformVariations)
     }
 
-    // Save snippets to database if documentId provided
-    if (documentId && snippets.length > 0) {
-      const savePromises = snippets.map(snippet =>
-        createSocialSnippetAction({
-          documentId,
-          originalText: sourceText,
-          platform: snippet.platform,
-          content: snippet.content,
-          characterCount: snippet.characterCount,
-          hashtags: snippet.hashtags,
-          variation: snippet.variation
-        })
-      )
-      
-      // Execute saves in parallel but don't wait for completion
-      Promise.all(savePromises).catch(error => {
-        console.error("Error saving social snippets:", error)
-      })
-
-      // Also save as idea
-      createIdeaAction({
-        documentId,
-        type: "social",
-        title: `Social snippets for: ${sourceText.slice(0, 50)}...`,
-        content: `Generated ${snippets.length} social media variations`,
-        metadata: { platform: platform, characterCount: sourceText.length },
-        tags: ["social-media", "ai-generated"]
-      }).catch(error => {
-        console.error("Error saving social idea:", error)
-      })
-    }
+    // Social snippets are not saved - they're meant to be copied immediately
 
     return {
       isSuccess: true,

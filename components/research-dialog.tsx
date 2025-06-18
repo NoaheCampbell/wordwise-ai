@@ -23,7 +23,8 @@ import {
   BookOpen,
   Lightbulb,
   Plus,
-  Trash2
+  Trash2,
+  FileText
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
@@ -32,7 +33,8 @@ import {
   findRelevantArticlesAction,
   generateIdeasAction,
   saveIdeaAction,
-  searchPastDocumentsAction
+  searchPastDocumentsAction,
+  convertIdeaToDocumentAction
 } from "@/actions/research-ideation-actions"
 import {
   getResearchSourcesAction,
@@ -241,6 +243,26 @@ export function ResearchDialog({
       }
     } catch (error) {
       toast.error("Failed to delete idea")
+    }
+  }
+
+  const handleConvertToDocument = async (idea: SelectIdea) => {
+    try {
+      const result = await convertIdeaToDocumentAction(
+        idea.id,
+        idea.title,
+        idea.content,
+        idea.type
+      )
+      if (result.isSuccess) {
+        toast.success(result.message)
+        // Navigate to the new document
+        window.open(`/document/${result.data.documentId}`, "_blank")
+      } else {
+        toast.error(result.message)
+      }
+    } catch (error) {
+      toast.error("Failed to convert idea to document")
     }
   }
 
@@ -589,14 +611,25 @@ export function ResearchDialog({
                           </p>
                           <div className="flex items-center justify-between">
                             <Badge variant="secondary">{idea.type}</Badge>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDeleteIdea(idea.id)}
-                              title="Delete Idea"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleConvertToDocument(idea)}
+                                title="Convert to Document"
+                              >
+                                <FileText className="mr-1 size-3" />
+                                Create Doc
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteIdea(idea.id)}
+                                title="Delete Idea"
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))}
