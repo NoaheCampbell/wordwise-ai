@@ -2150,26 +2150,37 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
-        <div className="flex flex-1 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {document && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.push("/")}
-              className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+              className="shrink-0 text-gray-700 hover:bg-gray-200 hover:text-gray-900"
             >
               <ArrowLeft className="size-4" />
             </Button>
           )}
-          <Input
+          <textarea
             value={title}
             onChange={e => setTitle(e.target.value)}
-            className="border-none bg-transparent p-0 text-lg font-semibold text-gray-900 focus-visible:ring-0"
+            className="min-w-0 flex-1 resize-none border-none bg-transparent p-0 text-lg font-semibold leading-tight text-gray-900 focus:outline-none focus-visible:ring-0"
             placeholder="Untitled Document"
+            rows={1}
+            style={{
+              overflow: "hidden",
+              wordWrap: "break-word",
+              whiteSpace: "pre-wrap"
+            }}
+            onInput={e => {
+              const target = e.target as HTMLTextAreaElement
+              target.style.height = "auto"
+              target.style.height = target.scrollHeight + "px"
+            }}
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {document && (
             <Button
               variant="outline"
