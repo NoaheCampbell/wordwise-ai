@@ -13,7 +13,7 @@ import {
   suggestionsTable
 } from "@/db/schema/suggestions-schema"
 import { ActionState } from "@/types"
-import { eq, and, count } from "drizzle-orm"
+import { eq, and, count, lt } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 
 export async function createSuggestionAction(
@@ -345,7 +345,7 @@ export async function provideSuggestionFeedbackAction(
  */
 export async function clearDocumentSuggestionsAction(
   documentId: string
-): Promise<ActionState<void>> {
+): Promise<ActionState<{ deletedCount: number }>> {
   try {
     const { userId } = await auth()
     
@@ -353,7 +353,9 @@ export async function clearDocumentSuggestionsAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    await db
+    console.log(`Clearing unaccepted suggestions for document ${documentId} and user ${userId}`)
+
+    const deletedSuggestions = await db
       .delete(suggestionsTable)
       .where(
         and(
@@ -362,11 +364,15 @@ export async function clearDocumentSuggestionsAction(
           eq(suggestionsTable.isAccepted, false)
         )
       )
+      .returning({ id: suggestionsTable.id })
+
+    const deletedCount = deletedSuggestions.length
+    console.log(`Cleared ${deletedCount} unaccepted suggestions for document ${documentId}`)
 
     return {
       isSuccess: true,
-      message: "Document suggestions cleared successfully",
-      data: undefined
+      message: `Document suggestions cleared successfully (${deletedCount} removed)`,
+      data: { deletedCount }
     }
   } catch (error) {
     console.error("Error clearing document suggestions:", error)
@@ -430,5 +436,146 @@ export async function getActiveSuggestionsForUIAction(
   } catch (error) {
     console.error("Error getting active suggestions for UI:", error)
     return { isSuccess: false, message: "Failed to get active suggestions" }
+  }
+}
+
+/**
+ * Clean up old suggestions based on user's data retention preference
+ */
+export async function cleanupOldSuggestionsAction(
+  userId?: string,
+  retentionDays?: number
+): Promise<ActionState<{ deletedCount: number }>> {
+  try {
+    const { userId: authUserId } = await auth()
+    const targetUserId = userId || authUserId
+    
+    if (!targetUserId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Default to 30 days if no retention period specified
+    const retention = retentionDays || 30
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - retention)
+
+    console.log(`Cleaning up suggestions older than ${retention} days for user ${targetUserId}`)
+    console.log(`Cutoff date: ${cutoffDate.toISOString()}`)
+
+    // Delete old suggestions (both accepted and unaccepted)
+    const deletedSuggestions = await db
+      .delete(suggestionsTable)
+      .where(
+        and(
+          eq(suggestionsTable.userId, targetUserId),
+          // Use lt (less than) to delete suggestions older than cutoff date
+          lt(suggestionsTable.createdAt, cutoffDate)
+        )
+      )
+      .returning({ id: suggestionsTable.id })
+
+    const deletedCount = deletedSuggestions.length
+
+    console.log(`Cleaned up ${deletedCount} old suggestions for user ${targetUserId}`)
+
+    return {
+      isSuccess: true,
+      message: `Cleaned up ${deletedCount} old suggestions`,
+      data: { deletedCount }
+    }
+  } catch (error) {
+    console.error("Error cleaning up old suggestions:", error)
+    return { isSuccess: false, message: "Failed to clean up old suggestions" }
+  }
+}
+
+/**
+ * Clean up old suggestions for all users (admin/system function)
+ */
+export async function cleanupAllOldSuggestionsAction(): Promise<ActionState<{ 
+  totalDeleted: number
+  usersProcessed: number 
+}>> {
+  try {
+    console.log("Starting system-wide suggestion cleanup...")
+
+    // Get all unique users with suggestions
+    const usersWithSuggestions = await db
+      .selectDistinct({ userId: suggestionsTable.userId })
+      .from(suggestionsTable)
+
+    let totalDeleted = 0
+    let usersProcessed = 0
+
+    // Process each user with their retention preference
+    for (const user of usersWithSuggestions) {
+      try {
+        // TODO: Get user's retention preference from user_preferences table
+        // For now, use default 30 days
+        const defaultRetentionDays = 30
+
+        const result = await cleanupOldSuggestionsAction(user.userId, defaultRetentionDays)
+        
+        if (result.isSuccess) {
+          totalDeleted += result.data.deletedCount
+          usersProcessed++
+        }
+      } catch (userError) {
+        console.error(`Error cleaning up suggestions for user ${user.userId}:`, userError)
+        // Continue with other users
+      }
+    }
+
+    console.log(`System cleanup completed: ${totalDeleted} suggestions deleted for ${usersProcessed} users`)
+
+    return {
+      isSuccess: true,
+      message: `System cleanup completed: ${totalDeleted} suggestions deleted for ${usersProcessed} users`,
+      data: { totalDeleted, usersProcessed }
+    }
+  } catch (error) {
+    console.error("Error in system-wide cleanup:", error)
+    return { isSuccess: false, message: "Failed to perform system-wide cleanup" }
+  }
+}
+
+/**
+ * Clean up suggestions for a specific document older than specified days
+ */
+export async function cleanupOldDocumentSuggestionsAction(
+  documentId: string,
+  retentionDays: number = 7
+): Promise<ActionState<{ deletedCount: number }>> {
+  try {
+    const { userId } = await auth()
+    
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
+
+    const deletedSuggestions = await db
+      .delete(suggestionsTable)
+      .where(
+        and(
+          eq(suggestionsTable.documentId, documentId),
+          eq(suggestionsTable.userId, userId),
+          lt(suggestionsTable.createdAt, cutoffDate)
+        )
+      )
+      .returning({ id: suggestionsTable.id })
+
+    const deletedCount = deletedSuggestions.length
+
+    return {
+      isSuccess: true,
+      message: `Cleaned up ${deletedCount} old suggestions for document`,
+      data: { deletedCount }
+    }
+  } catch (error) {
+    console.error("Error cleaning up old document suggestions:", error)
+    return { isSuccess: false, message: "Failed to clean up old document suggestions" }
   }
 } 

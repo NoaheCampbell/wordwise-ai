@@ -36,7 +36,8 @@ import {
   Moon,
   Sun,
   Monitor,
-  ArrowLeft
+  ArrowLeft,
+  Trash2
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -363,6 +364,44 @@ export default function SettingsPage() {
                     </Select>
                     <p className="text-muted-foreground text-sm">
                       How long to keep your writing history and suggestions.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Data Cleanup</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          setIsLoading(true)
+                          try {
+                            const { cleanupOldSuggestionsAction } =
+                              await import("@/actions/db/suggestions-actions")
+                            const result = await cleanupOldSuggestionsAction()
+                            if (result.isSuccess) {
+                              toast.success(
+                                `Cleaned up ${result.data.deletedCount} old suggestions`
+                              )
+                            } else {
+                              toast.error(result.message)
+                            }
+                          } catch (error) {
+                            toast.error("Failed to cleanup old suggestions")
+                          } finally {
+                            setIsLoading(false)
+                          }
+                        }}
+                        disabled={isLoading}
+                        className="flex items-center gap-2"
+                      >
+                        <Trash2 className="size-4" />
+                        {isLoading ? "Cleaning..." : "Clean Old Suggestions"}
+                      </Button>
+                    </div>
+                    <p className="text-muted-foreground text-sm">
+                      Manually remove old AI suggestions based on your retention
+                      settings.
                     </p>
                   </div>
                 </div>

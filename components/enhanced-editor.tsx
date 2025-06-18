@@ -58,7 +58,9 @@ import {
   dismissSuggestionByContentAction,
   clearDocumentSuggestionsAction,
   getActiveSuggestionsForUIAction,
-  createSuggestionAction
+  createSuggestionAction,
+  cleanupOldSuggestionsAction,
+  cleanupOldDocumentSuggestionsAction
 } from "@/actions/db/suggestions-actions"
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
@@ -1312,21 +1314,51 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       contentLength: contentRef.current.length
     })
 
-    // Clear existing suggestions when starting new analysis
+    setIsAnalyzing(true)
+    setProviderIsAnalyzing(true)
+
+    // Clear existing suggestions when starting new analysis - WAIT for completion
     if (document?.id) {
       try {
-        await clearDocumentSuggestionsAction(document.id)
+        console.log("Clearing existing suggestions for document:", document.id)
+        const clearResult = await clearDocumentSuggestionsAction(document.id)
+
+        if (clearResult.isSuccess) {
+          console.log(
+            `Successfully cleared database suggestions: ${clearResult.message}`
+          )
+          console.log(
+            `Deleted ${clearResult.data.deletedCount} suggestions from database`
+          )
+
+          // Small delay to ensure database transaction is fully committed
+          await new Promise(resolve => setTimeout(resolve, 100))
+        } else {
+          console.error(
+            "Failed to clear database suggestions:",
+            clearResult.message
+          )
+          // Continue anyway, but log the issue
+        }
+
+        // Clear UI state after database clearing
         setDeepHighlights([])
         setRealTimeHighlights([])
         setSuggestions([])
-        console.log("Cleared existing suggestions for document:", document.id)
+        console.log("Cleared UI suggestions state")
       } catch (error) {
         console.error("Error clearing suggestions:", error)
+        // Still clear UI state even if database clearing failed
+        setDeepHighlights([])
+        setRealTimeHighlights([])
+        setSuggestions([])
       }
+    } else {
+      // No document ID, just clear UI state
+      setDeepHighlights([])
+      setRealTimeHighlights([])
+      setSuggestions([])
     }
-
-    setIsAnalyzing(true)
-    setProviderIsAnalyzing(true)
     try {
       const action = useParallelAnalysis
         ? analyzeTextInParallelAction
@@ -1712,6 +1744,52 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       textareaRef.current.innerHTML = renderHighlightedHTML()
     }
   }, [content, highlights])
+
+  // Cleanup old suggestions periodically
+  useEffect(() => {
+    const cleanupInterval = setInterval(
+      async () => {
+        try {
+          // Clean up old suggestions for current user (default 30 days)
+          const result = await cleanupOldSuggestionsAction()
+          if (result.isSuccess && result.data.deletedCount > 0) {
+            console.log(
+              `Automatic cleanup: Removed ${result.data.deletedCount} old suggestions`
+            )
+          }
+        } catch (error) {
+          console.error("Error during automatic suggestion cleanup:", error)
+        }
+      },
+      24 * 60 * 60 * 1000
+    ) // Run every 24 hours
+
+    // Cleanup on component mount (immediate cleanup)
+    const immediateCleanup = async () => {
+      try {
+        // Clean up old suggestions for current document (7 days)
+        if (document?.id) {
+          const result = await cleanupOldDocumentSuggestionsAction(
+            document.id,
+            7
+          )
+          if (result.isSuccess && result.data.deletedCount > 0) {
+            console.log(
+              `Document cleanup: Removed ${result.data.deletedCount} old suggestions for current document`
+            )
+          }
+        }
+      } catch (error) {
+        console.error("Error during immediate document cleanup:", error)
+      }
+    }
+
+    immediateCleanup()
+
+    return () => {
+      clearInterval(cleanupInterval)
+    }
+  }, [document?.id])
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
