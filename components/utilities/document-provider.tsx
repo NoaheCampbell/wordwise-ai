@@ -21,6 +21,7 @@ import {
 
 interface DocumentContextType {
   documents: SelectDocument[]
+  currentDocument: SelectDocument | null
   clarityScore: number | null
   liveClarityScore: number | null
   suggestions: AISuggestion[]
@@ -43,6 +44,8 @@ interface DocumentContextType {
   ) => void
   applySuggestion: (id: string) => void
   dismissSuggestion: (id: string) => void
+  generateNewIdeas: () => Promise<void>
+  registerGenerateNewIdeas: (callback: () => Promise<void>) => void
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(
@@ -53,6 +56,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const { user } = useUser()
   const pathname = usePathname()
   const [documents, setDocuments] = useState<SelectDocument[]>([])
+  const [currentDocument, setCurrentDocument] = useState<SelectDocument | null>(
+    null
+  )
   const [clarityScore, setClarityScore] = useState<number | null>(null)
   const [liveClarityScore, setLiveClarityScore] = useState<number | null>(null)
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
@@ -67,6 +73,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const suggestionCallbacks = useRef({
     apply: (_id: string) => {},
     dismiss: (_id: string) => {}
+  })
+
+  const generateIdeasCallback = useRef<() => Promise<void>>(async () => {
+    console.warn("generateNewIdeas callback not registered")
   })
 
   const registerSuggestionCallbacks = useCallback(
@@ -84,6 +94,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     suggestionCallbacks.current.dismiss(id)
   }, [])
 
+  const generateNewIdeas = useCallback(async () => {
+    await generateIdeasCallback.current()
+  }, [])
+
+  const registerGenerateNewIdeas = useCallback(
+    (callback: () => Promise<void>) => {
+      generateIdeasCallback.current = callback
+    },
+    []
+  )
+
   const reloadDocuments = useCallback(async () => {
     if (!user) return
     setIsLoading(true)
@@ -92,6 +113,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       setDocuments(result.data)
     }
     setIsLoading(false)
+    setSuggestions([])
   }, [user])
 
   const reloadClarityScore = useCallback(async () => {
@@ -127,10 +149,20 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
   }, [user, reloadDocuments, reloadClarityScore, pathname])
 
+  useEffect(() => {
+    if (currentDocumentId) {
+      const doc = documents.find(d => d.id === currentDocumentId)
+      setCurrentDocument(doc || null)
+    } else {
+      setCurrentDocument(null)
+    }
+  }, [currentDocumentId, documents])
+
   return (
     <DocumentContext.Provider
       value={{
         documents,
+        currentDocument,
         clarityScore,
         liveClarityScore,
         suggestions,
@@ -149,7 +181,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         setCurrentDocumentId,
         registerSuggestionCallbacks,
         applySuggestion,
-        dismissSuggestion
+        dismissSuggestion,
+        generateNewIdeas,
+        registerGenerateNewIdeas
       }}
     >
       {children}

@@ -33,34 +33,28 @@ import {
   analyzePastDocumentsAction
 } from "@/actions/research-ideation-actions"
 import { getIdeasAction } from "@/actions/db/ideas-actions"
-import { GeneratedIdea, EnhancedPastDocument } from "@/types"
+import { GeneratedIdea, EnhancedDocumentAnalysis } from "@/types"
 
 interface EnhancedIdeaGeneratorProps {
   documentId?: string
   currentContent: string
+  enhancedAnalysis: EnhancedDocumentAnalysis | null
   isOpen: boolean
   onClose: () => void
+  onGenerate: () => Promise<void>
 }
 
 export function EnhancedIdeaGenerator({
   documentId,
   currentContent,
+  enhancedAnalysis,
   isOpen,
-  onClose
+  onClose,
+  onGenerate
 }: EnhancedIdeaGeneratorProps) {
   const { user } = useUser()
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [activeTab, setActiveTab] = useState("analysis")
-
-  // Analysis states
-  const [pastDocuments, setPastDocuments] = useState<EnhancedPastDocument[]>([])
-  const [contentAnalysis, setContentAnalysis] = useState<{
-    topTopics: Array<{ topic: string; count: number }>
-    themes: string[]
-    contentGaps: string[]
-    recentTitles: string[]
-  } | null>(null)
 
   // Generation states
   const [generatedIdeas, setGeneratedIdeas] = useState<GeneratedIdea[]>([])
@@ -69,64 +63,11 @@ export function EnhancedIdeaGenerator({
   >("headlines")
   const [savedIdeasCount, setSavedIdeasCount] = useState(0)
 
-  const analyzePastContent = async () => {
-    if (!user?.id) return
-
-    setIsAnalyzing(true)
-    try {
-      const result = await analyzePastDocumentsAction(
-        user.id,
-        currentContent,
-        20
-      )
-      if (result.isSuccess) {
-        setPastDocuments(result.data)
-
-        // Analyze the data
-        const topicMap = new Map<string, number>()
-        const themes = new Set<string>()
-
-        result.data.forEach(doc => {
-          doc.mainTopics.forEach(topic => {
-            topicMap.set(
-              topic.toLowerCase(),
-              (topicMap.get(topic.toLowerCase()) || 0) + 1
-            )
-          })
-          doc.themes.forEach(theme => themes.add(theme))
-        })
-
-        const topTopics = Array.from(topicMap.entries())
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 8)
-          .map(([topic, count]) => ({ topic, count }))
-
-        const recentTitles = result.data.slice(0, 5).map(doc => doc.title)
-
-        setContentAnalysis({
-          topTopics,
-          themes: Array.from(themes).slice(0, 10),
-          contentGaps: [], // Would be computed based on analysis
-          recentTitles
-        })
-
-        toast.success(`Analyzed ${result.data.length} past documents`)
-        setActiveTab("analysis")
-      } else {
-        toast.error(result.message)
-      }
-    } catch (error) {
-      toast.error("Failed to analyze past content")
-    } finally {
-      setIsAnalyzing(false)
-    }
-  }
-
   const generateIdeas = async (type: "headlines" | "topics" | "outlines") => {
     // Check if we have any analysis to work with
-    if (!currentContent.trim() && pastDocuments.length === 0) {
+    if (!currentContent.trim() && !enhancedAnalysis) {
       toast.error(
-        "Please analyze past content first or add some current content to generate ideas from"
+        "Please add some content or wait for the analysis to complete to generate ideas."
       )
       return
     }
@@ -218,154 +159,135 @@ export function EnhancedIdeaGenerator({
               </TabsList>
 
               <Button
-                onClick={analyzePastContent}
-                disabled={isAnalyzing}
+                onClick={onGenerate}
+                disabled={isGenerating}
                 variant="outline"
                 size="sm"
               >
-                {isAnalyzing ? (
+                {isGenerating ? (
                   <RefreshCw className="mr-2 size-4 animate-spin" />
                 ) : (
                   <BookOpen className="mr-2 size-4" />
                 )}
-                Analyze Past Content
+                Regenerate Analysis
               </Button>
             </div>
 
             <ScrollArea className="h-[60vh]">
               <TabsContent value="analysis" className="space-y-6 p-6">
-                {pastDocuments.length === 0 ? (
+                {!enhancedAnalysis ? (
                   <div className="py-8 text-center">
                     <BookOpen className="text-muted-foreground mx-auto mb-4 size-12" />
                     <h3 className="mb-2 text-lg font-semibold">
                       No Analysis Yet
                     </h3>
                     <p className="text-muted-foreground mb-4">
-                      Click "Analyze Past Content" to get started with
-                      AI-powered content analysis
+                      Save your document to generate an analysis.
                     </p>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">
-                            Documents Analyzed
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <TrendingUp className="size-4" /> Top Topics
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <div className="text-2xl font-bold">
-                            {pastDocuments.length}
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Past newsletters analyzed
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">
-                            Topics Covered
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold">
-                            {contentAnalysis?.topTopics.length || 0}
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Unique topics identified
-                          </p>
-                        </CardContent>
-                      </Card>
-
-                      <Card>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-sm">
-                            Content Themes
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-2xl font-bold">
-                            {contentAnalysis?.themes.length || 0}
-                          </div>
-                          <p className="text-muted-foreground text-xs">
-                            Recurring themes found
-                          </p>
-                        </CardContent>
-                      </Card>
-                    </div>
-
-                    {contentAnalysis && (
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="mb-3 flex items-center gap-2 font-semibold">
-                            <TrendingUp className="size-4" />
-                            Most Covered Topics
-                          </h4>
-                          <div className="space-y-2">
-                            {contentAnalysis.topTopics.map(
-                              ({ topic, count }, index) => (
-                                <div
-                                  key={topic}
-                                  className="flex items-center justify-between"
+                          <ul className="space-y-2">
+                            {enhancedAnalysis.topTopics
+                              .slice(0, 5)
+                              .map(topic => (
+                                <li
+                                  key={topic.topic}
+                                  className="flex items-center justify-between text-sm"
                                 >
-                                  <span className="capitalize">{topic}</span>
-                                  <div className="flex items-center gap-2">
-                                    <Progress
-                                      value={
-                                        (count /
-                                          contentAnalysis.topTopics[0].count) *
-                                        100
-                                      }
-                                      className="w-20"
-                                    />
-                                    <Badge variant="secondary">{count}</Badge>
-                                  </div>
-                                </div>
-                              )
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <h4 className="mb-3 flex items-center gap-2 font-semibold">
-                            <Target className="size-4" />
-                            Content Themes
-                          </h4>
+                                  <span className="capitalize">
+                                    {topic.topic}
+                                  </span>
+                                  <Badge variant="secondary">
+                                    {topic.count}
+                                  </Badge>
+                                </li>
+                              ))}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Target className="size-4" /> Key Themes
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
                           <div className="flex flex-wrap gap-2">
-                            {contentAnalysis.themes.map(theme => (
+                            {enhancedAnalysis.themes.map(theme => (
                               <Badge key={theme} variant="outline">
                                 {theme}
                               </Badge>
                             ))}
                           </div>
-                        </div>
-
-                        <div>
-                          <h4 className="mb-3 font-semibold">Recent Titles</h4>
-                          <div className="space-y-1">
-                            {contentAnalysis.recentTitles.map(
-                              (title, index) => (
-                                <p
-                                  key={index}
-                                  className="text-muted-foreground text-sm"
-                                >
-                                  {index + 1}. {title}
-                                </p>
-                              )
-                            )}
-                          </div>
-                        </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2 text-base">
+                            <Lightbulb className="size-4" /> Content Gaps
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ul className="space-y-2">
+                            {enhancedAnalysis.contentGaps.map(gap => (
+                              <li key={gap} className="text-sm">
+                                {gap}
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    <div>
+                      <h4 className="mb-4 text-lg font-semibold">
+                        Past Document Analysis (
+                        {enhancedAnalysis.analyzedDocuments.length})
+                      </h4>
+                      <div className="space-y-4">
+                        {enhancedAnalysis.analyzedDocuments
+                          .slice(0, 5)
+                          .map(doc => (
+                            <Card key={doc.id} className="p-4">
+                              <div className="mb-2 flex items-center justify-between">
+                                <h5 className="font-semibold">{doc.title}</h5>
+                                {doc.similarity && (
+                                  <Badge
+                                    variant={
+                                      doc.similarity > 75
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                  >
+                                    {Math.round(doc.similarity)}% match
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {doc.mainTopics.map(topic => (
+                                  <Badge key={topic} variant="outline">
+                                    {topic}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </Card>
+                          ))}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
               </TabsContent>
 
               <TabsContent value="generate" className="space-y-6 p-6">
-                {!currentContent.trim() && pastDocuments.length === 0 ? (
+                {!currentContent.trim() && !enhancedAnalysis ? (
                   <div className="py-8 text-center">
                     <Lightbulb className="text-muted-foreground mx-auto mb-4 size-12" />
                     <h3 className="mb-2 text-lg font-semibold">
@@ -375,13 +297,13 @@ export function EnhancedIdeaGenerator({
                       To generate strategic ideas, please first analyze your
                       past content or add some current content to work with.
                     </p>
-                    <Button onClick={analyzePastContent} disabled={isAnalyzing}>
-                      {isAnalyzing ? (
+                    <Button onClick={onGenerate} disabled={isGenerating}>
+                      {isGenerating ? (
                         <RefreshCw className="mr-2 size-4 animate-spin" />
                       ) : (
                         <BookOpen className="mr-2 size-4" />
                       )}
-                      Analyze Past Content
+                      Regenerate Analysis
                     </Button>
                   </div>
                 ) : (
@@ -392,8 +314,8 @@ export function EnhancedIdeaGenerator({
                     <p className="text-muted-foreground mb-6">
                       Choose what type of ideas to generate based on your
                       content analysis{" "}
-                      {pastDocuments.length > 0 &&
-                        `(${pastDocuments.length} past documents analyzed)`}
+                      {enhancedAnalysis &&
+                        `(${enhancedAnalysis.analyzedDocuments.length} past documents analyzed)`}
                     </p>
 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">

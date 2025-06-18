@@ -5,6 +5,10 @@ import { InsertDocument, SelectDocument, documentsTable } from "@/db/schema/docu
 import { ActionState } from "@/types"
 import { eq, and } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
+import {
+  summarizeContentAction,
+  analyzeDocumentForEnhancedIdeasAction
+} from "@/actions/research-ideation-actions"
 
 function generateSlug(title: string): string {
   const slug = title
@@ -26,10 +30,36 @@ export async function createDocumentAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const [newDocument] = await db.insert(documentsTable).values({
+    const docToInsert: InsertDocument = {
       ...document,
       userId
-    }).returning()
+    }
+
+    if (docToInsert.content && docToInsert.content.trim().length > 0) {
+      const analysisResult = await summarizeContentAction(docToInsert.content)
+      if (analysisResult.isSuccess) {
+        docToInsert.analysis = analysisResult.data
+      } else {
+        console.warn(
+          `Could not analyze document on creation: ${analysisResult.message}`
+        )
+      }
+
+      const enhancedAnalysisResult =
+        await analyzeDocumentForEnhancedIdeasAction(docToInsert)
+      if (enhancedAnalysisResult.isSuccess) {
+        docToInsert.enhancedAnalysis = enhancedAnalysisResult.data
+      } else {
+        console.warn(
+          `Could not perform enhanced analysis on creation: ${enhancedAnalysisResult.message}`
+        )
+      }
+    }
+
+    const [newDocument] = await db
+      .insert(documentsTable)
+      .values(docToInsert)
+      .returning()
 
     return {
       isSuccess: true,
@@ -95,9 +125,42 @@ export async function updateDocumentAction(
   userId: string
 ): Promise<ActionState<SelectDocument>> {
   try {
+    const docToUpdate: Partial<InsertDocument> = { ...data }
+
+    if (docToUpdate.content && docToUpdate.content.trim().length > 0) {
+      const analysisResult = await summarizeContentAction(docToUpdate.content)
+      if (analysisResult.isSuccess) {
+        docToUpdate.analysis = analysisResult.data
+      } else {
+        console.warn(
+          `Could not analyze document on update: ${analysisResult.message}`
+        )
+      }
+
+      const currentDoc = await db.query.documents.findFirst({
+        where: eq(documentsTable.id, id)
+      })
+
+      if (currentDoc) {
+        const docForAnalysis = {
+          ...currentDoc,
+          ...data
+        }
+        const enhancedAnalysisResult =
+          await analyzeDocumentForEnhancedIdeasAction(docForAnalysis)
+        if (enhancedAnalysisResult.isSuccess) {
+          docToUpdate.enhancedAnalysis = enhancedAnalysisResult.data
+        } else {
+          console.warn(
+            `Could not perform enhanced analysis on update: ${enhancedAnalysisResult.message}`
+          )
+        }
+      }
+    }
+
     const [updatedDocument] = await db
       .update(documentsTable)
-      .set(data)
+      .set(docToUpdate)
       .where(eq(documentsTable.id, id))
       .returning()
 

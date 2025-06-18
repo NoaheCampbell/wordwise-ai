@@ -6,6 +6,46 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EnhancedIdeaGenerator } from "@/components/enhanced-idea-generator"
 import { Brain, Sparkles } from "lucide-react"
+import { EnhancedDocumentAnalysis } from "@/types"
+import { toast } from "sonner"
+
+const mockAnalysis: EnhancedDocumentAnalysis = {
+  analyzedDocuments: [
+    {
+      id: "doc1",
+      title: "The Art of the Subject Line",
+      content: "A deep dive into crafting compelling subject lines.",
+      tags: ["email marketing", "copywriting"],
+      campaignType: "engagement",
+      mainTopics: ["subject lines", "open rates"],
+      themes: ["optimization"],
+      contentType: "newsletter",
+      createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
+    },
+    {
+      id: "doc2",
+      title: "Q2 Product Updates",
+      content: "Here's what's new this quarter.",
+      tags: ["product", "announcement"],
+      campaignType: null,
+      mainTopics: ["new features", "product updates"],
+      themes: ["innovation"],
+      contentType: "newsletter",
+      createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+    }
+  ],
+  topTopics: [
+    { topic: "subject lines", count: 1 },
+    { topic: "product updates", count: 1 }
+  ],
+  themes: ["optimization", "innovation"],
+  contentGaps: [
+    "Writing for mobile",
+    "Audience segmentation strategies",
+    "A/B testing calls to action"
+  ],
+  recentTitles: ["The Art of the Subject Line", "Q2 Product Updates"]
+}
 
 export default function IdeaGeneratorDemo() {
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false)
@@ -43,6 +83,10 @@ In this week's newsletter, we're exploring the art of effective email communicat
 Remember, great newsletter writing is both an art and a science. It requires creativity, strategic thinking, and continuous optimization based on data and feedback.
   `.trim()
   )
+
+  const handleGenerate = async () => {
+    toast.info("This is a demo. Analysis regeneration is not available.")
+  }
 
   return (
     <div className="container mx-auto max-w-4xl px-4 py-8">
@@ -161,8 +205,10 @@ Remember, great newsletter writing is both an art and a science. It requires cre
 
       <EnhancedIdeaGenerator
         currentContent={currentContent}
+        enhancedAnalysis={mockAnalysis}
         isOpen={isGeneratorOpen}
         onClose={() => setIsGeneratorOpen(false)}
+        onGenerate={handleGenerate}
       />
     </div>
   )

@@ -2267,8 +2267,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </Button>
 
         <SimpleResearchPanel
-          documentId={document?.id}
-          currentContent={content}
+          document={document}
           isOpen={isResearchPanelOpen}
           onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
           onAddToBibliography={handleAddToBibliography}
@@ -2285,12 +2284,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-gray-100 dark:bg-gray-800"
+                      className="h-7 bg-gray-100 px-2 text-xs dark:bg-gray-800"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       Quick Tone
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2332,12 +2331,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-white dark:bg-gray-900"
+                      className="h-7 bg-white px-2 text-xs dark:bg-gray-900"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       AI Enhance
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2447,12 +2446,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-white dark:bg-gray-900"
+                      className="h-7 bg-white px-2 text-xs dark:bg-gray-900"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       Extend
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2492,21 +2491,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           </div>
         </TooltipProvider>
 
-        <SocialSnippetGenerator
-          document={document}
-          sourceText={content}
-          isOpen={isSocialSnippetOpen}
-          onOpenChange={setIsSocialSnippetOpen}
-        />
-      </div>
+        <div className="flex items-center gap-2">
+          <SocialSnippetGenerator
+            document={document}
+            sourceText={content}
+            isOpen={isSocialSnippetOpen}
+            onOpenChange={setIsSocialSnippetOpen}
+          />
 
-      {highlights.length > 0 && (
-        <div className="ml-auto flex items-center">
-          <Badge variant="secondary" className="ml-2">
-            {highlights.length} suggestions
-          </Badge>
+          {highlights.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {highlights.length} suggestions
+            </Badge>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
         <div className="flex items-center gap-4 text-xs">

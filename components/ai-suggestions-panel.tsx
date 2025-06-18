@@ -10,7 +10,13 @@ import { useDocument } from "./utilities/document-provider"
 import { EnhancedIdeaGenerator } from "@/components/enhanced-idea-generator"
 
 export function AISuggestionsPanel() {
-  const { suggestions, isAnalyzing, currentContent } = useDocument()
+  const {
+    suggestions,
+    isAnalyzing,
+    currentContent,
+    currentDocument,
+    generateNewIdeas
+  } = useDocument()
   const [isIdeaGeneratorOpen, setIsIdeaGeneratorOpen] = useState(false)
 
   return (
@@ -100,9 +106,12 @@ export function AISuggestionsPanel() {
       </div>
 
       <EnhancedIdeaGenerator
+        documentId={currentDocument?.id}
         currentContent={currentContent}
+        enhancedAnalysis={currentDocument?.enhancedAnalysis || null}
         isOpen={isIdeaGeneratorOpen}
         onClose={() => setIsIdeaGeneratorOpen(false)}
+        onGenerate={generateNewIdeas}
       />
     </div>
   )

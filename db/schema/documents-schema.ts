@@ -13,12 +13,16 @@ import {
   integer,
   boolean
 } from "drizzle-orm/pg-core"
+import { DocumentAnalysis, EnhancedDocumentAnalysis } from "@/types"
 
 export const documentsTable = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  analysis: jsonb("analysis").$type<DocumentAnalysis>(),
+  enhancedAnalysis:
+    jsonb("enhanced_analysis").$type<EnhancedDocumentAnalysis>(),
   isPublic: boolean("is_public").notNull().default(false),
   slug: text("slug").unique(),
   version: integer("version").notNull().default(1),
