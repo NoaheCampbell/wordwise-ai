@@ -219,6 +219,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<AISuggestion | null>(null)
+  const [lastAnalysisTime, setLastAnalysisTime] = useState(0)
+  const [analysisCount, setAnalysisCount] = useState(0)
+  const [currentTime, setCurrentTime] = useState(Date.now())
   const textareaRef = useRef<HTMLDivElement>(null)
   const isUpdatingFromEffect = useRef(false)
 
@@ -253,6 +256,62 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     end: number
     text: string
   } | null>(null)
+
+  // Helper function to reset analysis state
+  const resetAnalysisState = useCallback(() => {
+    console.log("[Analysis Debug] Resetting analysis state...")
+    setDeepHighlights([])
+    setRealTimeHighlights([])
+    setSuggestions([])
+    setSelectedSuggestion(null)
+    setAnalysisCount(0)
+    setLastAnalysisTime(0)
+    if (debouncedClarityUpdate.current) {
+      clearTimeout(debouncedClarityUpdate.current)
+      debouncedClarityUpdate.current = null
+    }
+  }, [setSuggestions])
+
+  // Calculate if analyze button should be disabled
+  const isAnalyzeDisabled = useMemo(() => {
+    const ANALYSIS_COOLDOWN = 2000
+    const MAX_RAPID_ANALYSES = 5
+
+    if (isAnalyzing) return true
+    if (!contentRef.current?.trim()) return true
+    if (currentTime - lastAnalysisTime < ANALYSIS_COOLDOWN) return true
+    if (
+      analysisCount >= MAX_RAPID_ANALYSES &&
+      currentTime - lastAnalysisTime < 30000
+    )
+      return true
+
+    return false
+  }, [isAnalyzing, lastAnalysisTime, analysisCount, currentTime])
+
+  // Calculate remaining cooldown time for UI
+  const cooldownRemaining = useMemo(() => {
+    const ANALYSIS_COOLDOWN = 2000
+    const remaining = ANALYSIS_COOLDOWN - (currentTime - lastAnalysisTime)
+    return Math.max(0, Math.ceil(remaining / 1000))
+  }, [lastAnalysisTime, currentTime])
+
+  // Timer to update button text during cooldown
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    if (lastAnalysisTime > 0 && currentTime - lastAnalysisTime < 2000) {
+      interval = setInterval(() => {
+        setCurrentTime(Date.now())
+      }, 100) // Update every 100ms for smooth countdown
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval)
+      }
+    }
+  }, [lastAnalysisTime, currentTime])
 
   // Update selection state based on current selection
   const updateSelectionState = useCallback(() => {
@@ -660,6 +719,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   useEffect(() => {
     if (initialDocument) {
+      // Reset analysis state when switching documents
+      resetAnalysisState()
+
       setDocument(initialDocument)
       setTitle(initialDocument.title)
       setContent(initialDocument.content || "")
@@ -687,6 +749,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       if (initialDocument.id) {
         loadCachedSuggestionsForDocument(initialDocument.id)
       }
+
+      console.log(`[Analysis Debug] Document loaded: ${initialDocument.id}`)
     }
     return () => {
       setSuggestions([])
@@ -696,7 +760,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setSuggestions,
     setCurrentContent,
     setCurrentDocumentId,
-    setSavedClarityScore
+    setSavedClarityScore,
+    resetAnalysisState
   ])
 
   const throttle = <T extends (...args: any[]) => void>(
@@ -1787,52 +1852,98 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }
 
   const analyzeText = async () => {
-    if (!contentRef.current.trim()) return
+    const now = Date.now()
+    const ANALYSIS_COOLDOWN = 2000 // 2 seconds between analyses
+    const MAX_RAPID_ANALYSES = 5 // Max analyses before requiring longer cooldown
+
+    // Check if content exists
+    if (!contentRef.current.trim()) {
+      toast.info("No content to analyze")
+      return
+    }
+
+    // Implement cooldown to prevent rapid-fire analysis
+    if (now - lastAnalysisTime < ANALYSIS_COOLDOWN) {
+      toast.info("Please wait a moment before analyzing again")
+      return
+    }
+
+    // Check for excessive rapid analysis (potential issue indicator)
+    if (analysisCount >= MAX_RAPID_ANALYSES && now - lastAnalysisTime < 30000) {
+      toast.warning(
+        "Taking a break from analysis to prevent issues. Please wait 30 seconds."
+      )
+      return
+    }
+
+    // Update tracking state
+    setLastAnalysisTime(now)
+    setAnalysisCount(prev => {
+      // Reset counter if enough time has passed
+      if (now - lastAnalysisTime > 60000) return 1
+      return prev + 1
+    })
+
+    console.log(
+      `[Analysis Debug] Starting analysis #${analysisCount + 1} for document ${document?.id}`
+    )
 
     setIsAnalyzing(true)
     setProviderIsAnalyzing(true)
 
-    // Clear existing suggestions when starting new analysis - WAIT for completion
-    if (document?.id) {
-      try {
-        const clearResult = await clearDocumentSuggestionsAction(document.id)
+    try {
+      // STEP 1: Comprehensive state cleanup
+      console.log("[Analysis Debug] Clearing all existing state...")
 
-        if (clearResult.isSuccess) {
-          // Small delay to ensure database transaction is fully committed
-          await new Promise(resolve => setTimeout(resolve, 100))
-        } else {
-          console.error(
-            "Failed to clear database suggestions:",
-            clearResult.message
-          )
-          // Continue anyway, but log the issue
-        }
-
-        // Clear UI state after database clearing
-        setDeepHighlights([])
-        setRealTimeHighlights([])
-        setSuggestions([])
-      } catch (error) {
-        console.error("Error clearing suggestions:", error)
-        // Still clear UI state even if database clearing failed
-        setDeepHighlights([])
-        setRealTimeHighlights([])
-        setSuggestions([])
-      }
-    } else {
-      // No document ID, just clear UI state
+      // Clear UI state immediately
       setDeepHighlights([])
       setRealTimeHighlights([])
       setSuggestions([])
-    }
-    try {
+      setSelectedSuggestion(null)
+
+      // STEP 2: Clear database suggestions if document exists
+      if (document?.id) {
+        try {
+          console.log(
+            `[Analysis Debug] Clearing database suggestions for document ${document.id}`
+          )
+          const clearResult = await clearDocumentSuggestionsAction(document.id)
+
+          if (clearResult.isSuccess) {
+            console.log(
+              `[Analysis Debug] Successfully cleared ${clearResult.data?.deletedCount || 0} suggestions from database`
+            )
+            // Longer delay to ensure database transaction is fully committed
+            await new Promise(resolve => setTimeout(resolve, 250))
+          } else {
+            console.error(
+              "Failed to clear database suggestions:",
+              clearResult.message
+            )
+            // Continue anyway, but this might cause issues
+          }
+        } catch (clearError) {
+          console.error("Error clearing database suggestions:", clearError)
+          // Continue with analysis but warn user
+          toast.warning("Database cleanup failed, but continuing with analysis")
+        }
+      }
+
+      // STEP 3: Force garbage collection of any stale references
+      // Clear any pending timeouts or intervals that might interfere
+      if (debouncedClarityUpdate.current) {
+        clearTimeout(debouncedClarityUpdate.current)
+        debouncedClarityUpdate.current = null
+      }
+
+      // STEP 4: Run the analysis
+      console.log("[Analysis Debug] Starting AI analysis...")
       const action = useParallelAnalysis
         ? analyzeTextInParallelAction
         : analyzeTextAction
 
       let result
       if (action === analyzeTextAction) {
-        // For single analysis, pass documentId and saveSuggestions
         result = await analyzeTextAction(
           {
             text: contentRef.current,
@@ -1844,11 +1955,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               "passive-voice"
             ]
           },
-          document?.id, // documentId
+          document?.id,
           true // saveSuggestions
         )
       } else {
-        // For parallel analysis, also pass documentId and saveSuggestions
         result = await action(
           {
             text: contentRef.current,
@@ -1860,63 +1970,125 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               "passive-voice"
             ]
           },
-          document?.id, // documentId
+          document?.id,
           true // saveSuggestions
         )
       }
 
+      // STEP 5: Process results with enhanced validation
       if (result.isSuccess && result.data) {
+        console.log(
+          `[Analysis Debug] Analysis successful, processing ${result.data.overallSuggestions.length} suggestions`
+        )
+
         setHasManuallyEdited(false)
-        const newHighlightsRaw: HighlightedText[] =
-          result.data.overallSuggestions
-            .map(suggestion => {
-              const highlight = {
-                id: suggestion.id,
-                start: suggestion.span?.start || 0,
-                end: suggestion.span?.end || 0,
-                type: suggestion.type,
-                suggestion
-              }
 
-              // Validate that the text at the calculated position matches the expected text
-              const actualText = contentRef.current.slice(
-                highlight.start,
-                highlight.end
-              )
-              if (actualText !== suggestion.originalText) {
-                console.warn("Position mismatch detected:", {
-                  suggestionId: suggestion.id,
-                  expectedText: suggestion.originalText,
-                  actualText: actualText,
-                  position: { start: highlight.start, end: highlight.end },
-                  context: suggestion.span?.text
-                })
-                // Try to find the correct position
-                const correctPos = contentRef.current.indexOf(
-                  suggestion.originalText
-                )
-                if (correctPos !== -1) {
-                  highlight.start = correctPos
-                  highlight.end = correctPos + suggestion.originalText.length
+        // Enhanced suggestion processing with better error handling
+        const processedHighlights: HighlightedText[] = []
+        const usedPositions = new Set<number>()
+
+        for (const suggestion of result.data.overallSuggestions) {
+          try {
+            const highlight = {
+              id: suggestion.id,
+              start: suggestion.span?.start || 0,
+              end: suggestion.span?.end || 0,
+              type: suggestion.type,
+              suggestion
+            }
+
+            // Validate position boundaries
+            if (
+              highlight.start < 0 ||
+              highlight.end > contentRef.current.length ||
+              highlight.start >= highlight.end
+            ) {
+              console.warn(
+                `[Analysis Debug] Invalid position for suggestion ${suggestion.id}:`,
+                {
+                  start: highlight.start,
+                  end: highlight.end,
+                  contentLength: contentRef.current.length
                 }
-              }
+              )
+              continue
+            }
 
-              return highlight
-            })
-            .filter(h => {
-              // Only keep highlights where we found valid positions
-              const actualText = contentRef.current.slice(h.start, h.end)
-              return actualText === h.suggestion.originalText
-            })
-        setDeepHighlights(deduplicateHighlights(newHighlightsRaw))
-        // We keep real-time highlights, but the deep analysis ones take precedence
-        // The rendering logic will handle overlaps based on priority
+            // Check for position conflicts
+            if (usedPositions.has(highlight.start)) {
+              console.warn(
+                `[Analysis Debug] Position conflict for suggestion ${suggestion.id} at position ${highlight.start}`
+              )
+              continue
+            }
+
+            // Validate that the text at the calculated position matches the expected text
+            const actualText = contentRef.current.slice(
+              highlight.start,
+              highlight.end
+            )
+            if (actualText !== suggestion.originalText) {
+              console.warn(
+                `[Analysis Debug] Text mismatch for suggestion ${suggestion.id}:`,
+                {
+                  expected: suggestion.originalText,
+                  actual: actualText,
+                  position: { start: highlight.start, end: highlight.end }
+                }
+              )
+
+              // Try to find the correct position
+              const correctPos = contentRef.current.indexOf(
+                suggestion.originalText
+              )
+              if (correctPos !== -1 && !usedPositions.has(correctPos)) {
+                highlight.start = correctPos
+                highlight.end = correctPos + suggestion.originalText.length
+                console.log(
+                  `[Analysis Debug] Fixed position for suggestion ${suggestion.id}: ${correctPos}`
+                )
+              } else {
+                console.warn(
+                  `[Analysis Debug] Could not fix position for suggestion ${suggestion.id}, skipping`
+                )
+                continue
+              }
+            }
+
+            // Mark position as used and add to processed highlights
+            usedPositions.add(highlight.start)
+            processedHighlights.push(highlight)
+          } catch (suggestionError) {
+            console.error(
+              `[Analysis Debug] Error processing suggestion ${suggestion.id}:`,
+              suggestionError
+            )
+            continue
+          }
+        }
+
+        console.log(
+          `[Analysis Debug] Successfully processed ${processedHighlights.length} of ${result.data.overallSuggestions.length} suggestions`
+        )
+
+        // Set the processed highlights
+        setDeepHighlights(deduplicateHighlights(processedHighlights))
+
+        // Show success message with stats
+        toast.success(
+          `Analysis complete! Found ${processedHighlights.length} suggestions.`
+        )
+      } else {
+        console.error("[Analysis Debug] Analysis failed:", result.message)
+        toast.error(result.message || "Analysis failed")
       }
     } catch (error) {
-      console.error("Analysis error:", error)
+      console.error("[Analysis Debug] Unexpected error during analysis:", error)
+      toast.error("An unexpected error occurred during analysis")
     } finally {
       setIsAnalyzing(false)
       setProviderIsAnalyzing(false)
+      console.log("[Analysis Debug] Analysis completed")
     }
   }
 
@@ -2343,22 +2515,31 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     </Label>
                   </div>
                   {document?.id && (
-                    <div className="mt-2">
+                    <div className="mt-2 space-y-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={async () => {
                           if (document?.id) {
                             await clearDocumentSuggestionsAction(document.id)
-                            setDeepHighlights([])
-                            setRealTimeHighlights([])
-                            setSuggestions([])
+                            resetAnalysisState()
                             toast.success("Cached suggestions cleared")
                           }
                         }}
                         className="w-full text-xs"
                       >
                         Clear Cached Suggestions
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          resetAnalysisState()
+                          toast.success("Analysis state reset")
+                        }}
+                        className="w-full text-xs"
+                      >
+                        Reset Analysis State
                       </Button>
                     </div>
                   )}
@@ -2383,11 +2564,19 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           variant="outline"
           size="sm"
           onClick={analyzeText}
-          disabled={isAnalyzing}
-          className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+          disabled={isAnalyzeDisabled}
+          className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 disabled:opacity-50"
         >
-          <Sparkles className="mr-2 size-4" />
-          Analyze
+          <Sparkles
+            className={`mr-2 size-4 ${isAnalyzing ? "animate-spin" : ""}`}
+          />
+          {isAnalyzing
+            ? "Analyzing..."
+            : cooldownRemaining > 0
+              ? `Wait ${cooldownRemaining}s`
+              : analysisCount >= 5 && currentTime - lastAnalysisTime < 30000
+                ? "Cooling down..."
+                : "Analyze"}
         </Button>
 
         <Button
