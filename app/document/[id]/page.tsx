@@ -258,6 +258,7 @@ export default function DocumentPage() {
       <div className="flex min-h-screen w-full bg-gray-50">
         <DocumentSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
+          <TopNav />
           {/* Email verification banner */}
           <div className="px-6 pt-4">
             <EmailVerificationBanner />
