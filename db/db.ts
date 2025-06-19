@@ -12,8 +12,7 @@ import {
   suggestionsTable,
   userPreferencesTable,
   ideasTable,
-  researchSourcesTable,
-  clarityScoresTable
+  researchSourcesTable
 } from "@/db/schema"
 
 // Use Supabase connection string
@@ -32,8 +31,7 @@ const schema = {
   suggestions: suggestionsTable,
   userPreferences: userPreferencesTable,
   ideas: ideasTable,
-  researchSources: researchSourcesTable,
-  clarityScores: clarityScoresTable
+  researchSources: researchSourcesTable
 }
 
 export const db = drizzle(client, { schema })

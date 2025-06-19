@@ -28,15 +28,6 @@ export function ClarityHighlightsDialog({
 }: ClarityHighlightsDialogProps) {
   const [open, setOpen] = useState(false)
 
-  // Debug: Check if the function is available
-  console.log(
-    "ClarityHighlightsDialog RENDERED - onHighlightPhrase available:",
-    !!onHighlightPhrase,
-    "score:",
-    clarityScore.score,
-    "timestamp:",
-    Date.now()
-  )
   const getScoreColor = (score: number) => {
     if (score >= 90) return "green"
     if (score >= 60) return "amber"
@@ -113,19 +104,8 @@ export function ClarityHighlightsDialog({
                       <p
                         className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-sm text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
                         onClick={() => {
-                          console.log("Phrase clicked:", highlight)
-                          console.log(
-                            "onHighlightPhrase function:",
-                            !!onHighlightPhrase
-                          )
                           if (onHighlightPhrase) {
-                            console.log(
-                              "Calling onHighlightPhrase with:",
-                              highlight
-                            )
                             onHighlightPhrase(highlight)
-                          } else {
-                            console.log("onHighlightPhrase is not available!")
                           }
                           setOpen(false)
                         }}

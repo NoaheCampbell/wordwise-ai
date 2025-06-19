@@ -352,9 +352,6 @@ export async function clearDocumentSuggestionsAction(
     if (!userId) {
       return { isSuccess: false, message: "User not authenticated" }
     }
-
-    console.log(`Clearing unaccepted suggestions for document ${documentId} and user ${userId}`)
-
     const deletedSuggestions = await db
       .delete(suggestionsTable)
       .where(
@@ -367,7 +364,6 @@ export async function clearDocumentSuggestionsAction(
       .returning({ id: suggestionsTable.id })
 
     const deletedCount = deletedSuggestions.length
-    console.log(`Cleared ${deletedCount} unaccepted suggestions for document ${documentId}`)
 
     return {
       isSuccess: true,
@@ -459,9 +455,6 @@ export async function cleanupOldSuggestionsAction(
     const cutoffDate = new Date()
     cutoffDate.setDate(cutoffDate.getDate() - retention)
 
-    console.log(`Cleaning up suggestions older than ${retention} days for user ${targetUserId}`)
-    console.log(`Cutoff date: ${cutoffDate.toISOString()}`)
-
     // Delete old suggestions (both accepted and unaccepted)
     const deletedSuggestions = await db
       .delete(suggestionsTable)
@@ -475,8 +468,6 @@ export async function cleanupOldSuggestionsAction(
       .returning({ id: suggestionsTable.id })
 
     const deletedCount = deletedSuggestions.length
-
-    console.log(`Cleaned up ${deletedCount} old suggestions for user ${targetUserId}`)
 
     return {
       isSuccess: true,
@@ -497,8 +488,6 @@ export async function cleanupAllOldSuggestionsAction(): Promise<ActionState<{
   usersProcessed: number 
 }>> {
   try {
-    console.log("Starting system-wide suggestion cleanup...")
-
     // Get all unique users with suggestions
     const usersWithSuggestions = await db
       .selectDistinct({ userId: suggestionsTable.userId })
@@ -525,9 +514,6 @@ export async function cleanupAllOldSuggestionsAction(): Promise<ActionState<{
         // Continue with other users
       }
     }
-
-    console.log(`System cleanup completed: ${totalDeleted} suggestions deleted for ${usersProcessed} users`)
-
     return {
       isSuccess: true,
       message: `System cleanup completed: ${totalDeleted} suggestions deleted for ${usersProcessed} users`,

@@ -189,6 +189,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     reloadClarityScore,
     liveClarityScore,
     updateLiveClarityScore,
+    setSavedClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
     registerGenerateNewIdeas,
@@ -673,6 +674,15 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       setCurrentContent(initialDocument.content || "")
       setCurrentDocumentId(initialDocument.id)
 
+      // Load saved clarity score if it exists
+      if (initialDocument.clarityScore) {
+        setSavedClarityScore({
+          score: initialDocument.clarityScore,
+          explanation: initialDocument.clarityExplanation || "",
+          highlights: initialDocument.clarityHighlights || []
+        })
+      }
+
       // Load cached suggestions for this document
       if (initialDocument.id) {
         loadCachedSuggestionsForDocument(initialDocument.id)
@@ -681,7 +691,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return () => {
       setSuggestions([])
     }
-  }, [initialDocument, setSuggestions, setCurrentContent, setCurrentDocumentId])
+  }, [
+    initialDocument,
+    setSuggestions,
+    setCurrentContent,
+    setCurrentDocumentId,
+    setSavedClarityScore
+  ])
 
   const throttle = <T extends (...args: any[]) => void>(
     func: T,
@@ -997,22 +1013,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   // Handle highlighting a phrase in the editor
   const handleHighlightPhrase = (phrase: string) => {
-    console.log("handleHighlightPhrase called with:", phrase)
-    toast.info(`Attempting to highlight: "${phrase}"`)
-
     if (!textareaRef.current || !phrase) {
-      console.log("Early return: no textareaRef or phrase")
       toast.error("No editor or phrase available")
       return
     }
 
     const currentText = contentRef.current
-    console.log("Current text length:", currentText.length)
-    console.log("Searching for phrase:", JSON.stringify(phrase))
-    console.log(
-      "First 200 chars of text:",
-      JSON.stringify(currentText.substring(0, 200))
-    )
 
     // Try multiple search strategies
     let phraseIndex = -1
@@ -1020,12 +1026,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     // Strategy 1: Exact match
     phraseIndex = currentText.indexOf(phrase)
-    console.log("Strategy 1 (exact match):", phraseIndex)
 
     // Strategy 2: Case insensitive
     if (phraseIndex === -1) {
       phraseIndex = currentText.toLowerCase().indexOf(phrase.toLowerCase())
-      console.log("Strategy 2 (case insensitive):", phraseIndex)
     }
 
     // Strategy 3: Remove quotes and try again
@@ -1033,12 +1037,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const unquotedPhrase = phrase.replace(/["""'']/g, "").trim()
       phraseIndex = currentText.indexOf(unquotedPhrase)
       actualPhrase = unquotedPhrase
-      console.log(
-        "Strategy 3 (remove quotes):",
-        phraseIndex,
-        "phrase:",
-        unquotedPhrase
-      )
     }
 
     // Strategy 4: Normalize whitespace
@@ -1050,12 +1048,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const normalizedText = currentText.replace(/\s+/g, " ")
       phraseIndex = normalizedText.indexOf(normalizedPhrase)
       actualPhrase = normalizedPhrase
-      console.log(
-        "Strategy 4 (normalize whitespace):",
-        phraseIndex,
-        "phrase:",
-        normalizedPhrase
-      )
     }
 
     // Strategy 5: Try to find individual words
@@ -1064,27 +1056,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         .replace(/["""'']/g, "")
         .split(/\s+/)
         .filter(w => w.length > 2)
-      console.log("Strategy 5 - searching for words:", words)
 
       for (const word of words) {
         const wordIndex = currentText.toLowerCase().indexOf(word.toLowerCase())
         if (wordIndex !== -1) {
           phraseIndex = wordIndex
           actualPhrase = word
-          console.log("Found word:", word, "at index:", wordIndex)
           break
         }
       }
     }
 
     if (phraseIndex === -1) {
-      console.log("Phrase not found after all attempts")
       toast.error(`Could not find phrase: "${phrase}" in the current text`)
       return
     }
-
-    console.log("Found phrase at index:", phraseIndex)
-
     // Create a temporary highlight that will be removed after a few seconds
     const tempHighlight: HighlightedText = {
       id: `temp-highlight-${Date.now()}`,
@@ -1146,27 +1132,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   useEffect(() => {
     registerHighlightPhrase(handleHighlightPhrase)
   }, [registerHighlightPhrase])
-
-  // Debug: Log when the function is created
-  console.log(
-    "handleHighlightPhrase function created:",
-    !!handleHighlightPhrase
-  )
-
-  // Debug: Log what we're passing to the dialog
-  console.log(
-    "Enhanced Editor - handleHighlightPhrase exists:",
-    !!handleHighlightPhrase,
-    typeof handleHighlightPhrase
-  )
-  if (liveClarityScore) {
-    console.log("About to render ClarityHighlightsDialog with:", {
-      clarityScore: !!liveClarityScore,
-      onRewriteHighlight: !!handleRewriteHighlight,
-      onHighlightPhrase: !!handleHighlightPhrase,
-      handleHighlightPhraseType: typeof handleHighlightPhrase
-    })
-  }
 
   // Bibliography management functions
   const detectBibliographySection = (
@@ -1524,13 +1489,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           if (line.trim() === "") continue
           try {
             const suggestion: AISuggestion = JSON.parse(line)
-            console.log("Parsed suggestion from stream:", {
-              id: suggestion.id,
-              type: suggestion.type,
-              originalText: suggestion.originalText,
-              suggestedText: suggestion.suggestedText,
-              documentId: document?.id
-            })
 
             if (suggestion.span) {
               const existingHighlight = validHighlights.find(
@@ -1556,27 +1514,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 usedPositions.add(highlight.start)
                 newHighlightsRaw.push(highlight)
 
-                // Save grammar/spelling suggestions to database
-                console.log("Checking save conditions:", {
-                  hasDocumentId: !!document?.id,
-                  suggestionType: suggestion.type,
-                  isGrammarOrSpelling:
-                    suggestion.type === "grammar" ||
-                    suggestion.type === "spelling"
-                })
-
                 if (
                   document?.id &&
                   (suggestion.type === "grammar" ||
                     suggestion.type === "spelling")
                 ) {
-                  console.log("Saving suggestion to database:", {
-                    documentId: document.id,
-                    type: suggestion.type,
-                    originalText: suggestion.originalText,
-                    suggestedText: suggestion.suggestedText
-                  })
-
                   createSuggestionAction({
                     documentId: document.id,
                     type: suggestion.type as any,
@@ -1586,16 +1528,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     startPosition: suggestion.span.start,
                     endPosition: suggestion.span.end,
                     isAccepted: false
+                  }).catch((error: any) => {
+                    console.error(
+                      "Error saving grammar suggestion to database:",
+                      error
+                    )
                   })
-                    .then(result => {
-                      console.log("Suggestion saved successfully:", result)
-                    })
-                    .catch((error: any) => {
-                      console.error(
-                        "Error saving grammar suggestion to database:",
-                        error
-                      )
-                    })
                 }
               } else {
                 console.warn("Real-time highlight position mismatch:", {
@@ -1621,43 +1559,17 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 }
 
                 if (correctPos !== -1) {
-                  console.log(
-                    "Found correct position for real-time highlight:",
-                    correctPos
-                  )
                   highlight.start = correctPos
                   highlight.end = correctPos + suggestion.originalText.length
                   usedPositions.add(correctPos)
                   newHighlightsRaw.push(highlight)
 
                   // Save grammar/spelling suggestions to database (corrected position)
-                  console.log(
-                    "Checking save conditions (corrected position):",
-                    {
-                      hasDocumentId: !!document?.id,
-                      suggestionType: suggestion.type,
-                      isGrammarOrSpelling:
-                        suggestion.type === "grammar" ||
-                        suggestion.type === "spelling"
-                    }
-                  )
-
                   if (
                     document?.id &&
                     (suggestion.type === "grammar" ||
                       suggestion.type === "spelling")
                   ) {
-                    console.log(
-                      "Saving suggestion to database (corrected position):",
-                      {
-                        documentId: document.id,
-                        type: suggestion.type,
-                        originalText: suggestion.originalText,
-                        suggestedText: suggestion.suggestedText,
-                        position: correctPos
-                      }
-                    )
-
                     createSuggestionAction({
                       documentId: document.id,
                       type: suggestion.type as any,
@@ -1667,19 +1579,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                       startPosition: correctPos,
                       endPosition: correctPos + suggestion.originalText.length,
                       isAccepted: false
+                    }).catch((error: any) => {
+                      console.error(
+                        "Error saving grammar suggestion to database:",
+                        error
+                      )
                     })
-                      .then(result => {
-                        console.log(
-                          "Suggestion saved successfully (corrected position):",
-                          result
-                        )
-                      })
-                      .catch((error: any) => {
-                        console.error(
-                          "Error saving grammar suggestion to database:",
-                          error
-                        )
-                      })
                   }
                 }
               }
@@ -1770,19 +1675,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   // Load cached suggestions for the document
   const loadCachedSuggestionsForDocument = async (documentId: string) => {
     if (!documentId) {
-      console.log("No document ID provided for loading suggestions")
       return
     }
 
-    console.log("Loading cached suggestions for document:", documentId)
-
     try {
       const result = await getActiveSuggestionsForUIAction(documentId)
-      console.log("Cached suggestions result:", result)
 
       if (result.isSuccess && result.data.length > 0) {
-        console.log("Found cached suggestions:", result.data)
-
         // Validate positions and convert to HighlightedText format for the UI
         const usedPositions = new Set<number>()
         const validHighlights: HighlightedText[] = []
@@ -1803,20 +1702,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
           if (currentTextAtPosition === originalText) {
             // Position is still valid
-            console.log("Position valid for suggestion:", suggestion.id, {
-              savedStart,
-              savedEnd,
-              originalText
-            })
             if (!usedPositions.has(savedStart)) {
               usedPositions.add(savedStart)
             } else {
               // Position conflict, try to find new position
-              console.log(
-                "Position conflict for suggestion:",
-                suggestion.id,
-                "searching for new position"
-              )
               const newPos = findNewPosition(
                 contentRef.current,
                 originalText,
@@ -1836,12 +1725,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             }
           } else {
             // Position is invalid, try to find the correct position
-            console.log("Position invalid for suggestion:", suggestion.id, {
-              expectedText: originalText,
-              actualText: currentTextAtPosition,
-              savedPosition: { start: savedStart, end: savedEnd }
-            })
-
             const newPos = findNewPosition(
               contentRef.current,
               originalText,
@@ -1851,11 +1734,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               finalStart = newPos.start
               finalEnd = newPos.end
               usedPositions.add(finalStart)
-              console.log(
-                "Found new position for suggestion:",
-                suggestion.id,
-                newPos
-              )
             } else {
               console.warn(
                 "Could not find valid position for cached suggestion:",
@@ -1878,11 +1756,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           })
         }
 
-        console.log(
-          "Valid highlights after position validation:",
-          validHighlights
-        )
-
         setDeepHighlights(validHighlights)
         setSuggestions(validHighlights.map(h => h.suggestion))
 
@@ -1898,8 +1771,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             `Restored ${restoredCount} of ${totalCount} cached suggestions (${totalCount - restoredCount} had invalid positions)`
           )
         }
-      } else {
-        console.log("No cached suggestions found or result failed:", result)
       }
     } catch (error) {
       console.error("Error loading cached suggestions:", error)
@@ -1910,7 +1781,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   // Legacy function for backward compatibility
   const loadCachedSuggestions = async () => {
     if (!document?.id) {
-      console.log("No document ID available for loading suggestions")
       return
     }
     await loadCachedSuggestionsForDocument(document.id)
@@ -1919,29 +1789,15 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const analyzeText = async () => {
     if (!contentRef.current.trim()) return
 
-    console.log("Starting analysis with:", {
-      documentId: document?.id,
-      useParallelAnalysis,
-      contentLength: contentRef.current.length
-    })
-
     setIsAnalyzing(true)
     setProviderIsAnalyzing(true)
 
     // Clear existing suggestions when starting new analysis - WAIT for completion
     if (document?.id) {
       try {
-        console.log("Clearing existing suggestions for document:", document.id)
         const clearResult = await clearDocumentSuggestionsAction(document.id)
 
         if (clearResult.isSuccess) {
-          console.log(
-            `Successfully cleared database suggestions: ${clearResult.message}`
-          )
-          console.log(
-            `Deleted ${clearResult.data.deletedCount} suggestions from database`
-          )
-
           // Small delay to ensure database transaction is fully committed
           await new Promise(resolve => setTimeout(resolve, 100))
         } else {
@@ -1956,7 +1812,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         setDeepHighlights([])
         setRealTimeHighlights([])
         setSuggestions([])
-        console.log("Cleared UI suggestions state")
       } catch (error) {
         console.error("Error clearing suggestions:", error)
         // Still clear UI state even if database clearing failed
@@ -1974,11 +1829,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       const action = useParallelAnalysis
         ? analyzeTextInParallelAction
         : analyzeTextAction
-
-      console.log(
-        "Using analysis method:",
-        useParallelAnalysis ? "parallel" : "single"
-      )
 
       let result
       if (action === analyzeTextAction) {
@@ -2015,12 +1865,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         )
       }
 
-      console.log("Analysis result:", {
-        isSuccess: result.isSuccess,
-        suggestionsCount: result.data?.overallSuggestions?.length || 0,
-        documentId: document?.id
-      })
-
       if (result.isSuccess && result.data) {
         setHasManuallyEdited(false)
         const newHighlightsRaw: HighlightedText[] =
@@ -2052,7 +1896,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   suggestion.originalText
                 )
                 if (correctPos !== -1) {
-                  console.log("Found correct position:", correctPos)
                   highlight.start = correctPos
                   highlight.end = correctPos + suggestion.originalText.length
                 }
@@ -2371,11 +2214,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         try {
           // Clean up old suggestions for current user (default 30 days)
           const result = await cleanupOldSuggestionsAction()
-          if (result.isSuccess && result.data.deletedCount > 0) {
-            console.log(
-              `Automatic cleanup: Removed ${result.data.deletedCount} old suggestions`
-            )
-          }
         } catch (error) {
           console.error("Error during automatic suggestion cleanup:", error)
         }
@@ -2392,11 +2230,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             document.id,
             7
           )
-          if (result.isSuccess && result.data.deletedCount > 0) {
-            console.log(
-              `Document cleanup: Removed ${result.data.deletedCount} old suggestions for current document`
-            )
-          }
         }
       } catch (error) {
         console.error("Error during immediate document cleanup:", error)

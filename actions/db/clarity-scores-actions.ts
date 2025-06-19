@@ -2,38 +2,65 @@
 <ai_context>
 Server actions for managing clarity scores in the database.
 Handles caching, retrieval, and persistence of AI-generated clarity scores.
+Now works directly with documents table for better performance.
 </ai_context>
 */
 
 "use server"
 
 import { db } from "@/db/db"
-import {
-  InsertClarityScore,
-  SelectClarityScore,
-  clarityScoresTable
-} from "@/db/schema/clarity-scores-schema"
+import { documentsTable, SelectDocument } from "@/db/schema/documents-schema"
 import { ActionState } from "@/types"
-import { eq, and, desc } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
 import crypto from "crypto"
 
-export async function createClarityScoreAction(
-  data: InsertClarityScore
-): Promise<ActionState<SelectClarityScore>> {
+interface ClarityScoreData {
+  score: number
+  explanation: string
+  highlights: string[]
+  textHash: string
+}
+
+export async function saveClarityScoreToDocumentAction(
+  documentId: string,
+  clarityData: ClarityScoreData
+): Promise<ActionState<SelectDocument>> {
   try {
-    const [newScore] = await db
-      .insert(clarityScoresTable)
-      .values(data)
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const [updatedDocument] = await db
+      .update(documentsTable)
+      .set({
+        clarityScore: clarityData.score,
+        clarityExplanation: clarityData.explanation,
+        clarityHighlights: clarityData.highlights,
+        clarityTextHash: clarityData.textHash,
+        clarityAnalyzedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(documentsTable.id, documentId),
+          eq(documentsTable.userId, userId)
+        )
+      )
       .returning()
-    
+
+    if (!updatedDocument) {
+      return { isSuccess: false, message: "Document not found or no permission" }
+    }
+
     return {
       isSuccess: true,
       message: "Clarity score saved successfully",
-      data: newScore
+      data: updatedDocument
     }
   } catch (error) {
-    console.error("Error creating clarity score:", error)
+    console.error("Error saving clarity score to document:", error)
     return { isSuccess: false, message: "Failed to save clarity score" }
   }
 }
@@ -41,20 +68,20 @@ export async function createClarityScoreAction(
 export async function getCachedClarityScoreAction(
   textHash: string,
   userId: string
-): Promise<ActionState<SelectClarityScore | null>> {
+): Promise<ActionState<SelectDocument | null>> {
   try {
-    const cachedScore = await db.query.clarityScores.findFirst({
+    // Find any document with this text hash and clarity score
+    const documentWithScore = await db.query.documents.findFirst({
       where: and(
-        eq(clarityScoresTable.textHash, textHash),
-        eq(clarityScoresTable.userId, userId)
-      ),
-      orderBy: [desc(clarityScoresTable.createdAt)]
+        eq(documentsTable.clarityTextHash, textHash),
+        eq(documentsTable.userId, userId)
+      )
     })
 
     return {
       isSuccess: true,
-      message: cachedScore ? "Cached score found" : "No cached score found",
-      data: cachedScore || null
+      message: documentWithScore ? "Cached score found" : "No cached score found",
+      data: documentWithScore || null
     }
   } catch (error) {
     console.error("Error getting cached clarity score:", error)
@@ -62,36 +89,55 @@ export async function getCachedClarityScoreAction(
   }
 }
 
-export async function getClarityScoresForDocumentAction(
+export async function getClarityScoreForDocumentAction(
   documentId: string
-): Promise<ActionState<SelectClarityScore[]>> {
+): Promise<ActionState<{
+  score: number | null
+  explanation: string | null
+  highlights: string[]
+  analyzedAt: Date | null
+}>> {
   try {
     const { userId } = await auth()
     if (!userId) {
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const scores = await db.query.clarityScores.findMany({
+    const document = await db.query.documents.findFirst({
       where: and(
-        eq(clarityScoresTable.documentId, documentId),
-        eq(clarityScoresTable.userId, userId)
-      ),
-      orderBy: [desc(clarityScoresTable.createdAt)]
+        eq(documentsTable.id, documentId),
+        eq(documentsTable.userId, userId)
+      )
     })
+
+    if (!document) {
+      return { isSuccess: false, message: "Document not found" }
+    }
 
     return {
       isSuccess: true,
-      message: "Clarity scores retrieved successfully",
-      data: scores
+      message: "Clarity score retrieved successfully",
+      data: {
+        score: document.clarityScore,
+        explanation: document.clarityExplanation,
+        highlights: document.clarityHighlights || [],
+        analyzedAt: document.clarityAnalyzedAt
+      }
     }
   } catch (error) {
-    console.error("Error getting clarity scores for document:", error)
-    return { isSuccess: false, message: "Failed to get clarity scores" }
+    console.error("Error getting clarity score for document:", error)
+    return { isSuccess: false, message: "Failed to get clarity score" }
   }
 }
 
 export async function getLatestClarityScoreForUserAction(): Promise<
-  ActionState<SelectClarityScore | null>
+  ActionState<{
+    score: number | null
+    explanation: string | null
+    highlights: string[]
+    analyzedAt: Date | null
+    documentTitle: string
+  } | null>
 > {
   try {
     const { userId } = await auth()
@@ -99,15 +145,33 @@ export async function getLatestClarityScoreForUserAction(): Promise<
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const latestScore = await db.query.clarityScores.findFirst({
-      where: eq(clarityScoresTable.userId, userId),
-      orderBy: [desc(clarityScoresTable.createdAt)]
+    // Get the most recently analyzed document with a clarity score
+    const latestDocument = await db.query.documents.findFirst({
+      where: and(
+        eq(documentsTable.userId, userId),
+        // Only documents that have been analyzed for clarity
+      ),
+      orderBy: (documents, { desc }) => [desc(documents.clarityAnalyzedAt)]
     })
+
+    if (!latestDocument || !latestDocument.clarityScore) {
+      return {
+        isSuccess: true,
+        message: "No clarity scores found",
+        data: null
+      }
+    }
 
     return {
       isSuccess: true,
-      message: latestScore ? "Latest score found" : "No scores found",
-      data: latestScore || null
+      message: "Latest clarity score found",
+      data: {
+        score: latestDocument.clarityScore,
+        explanation: latestDocument.clarityExplanation,
+        highlights: latestDocument.clarityHighlights || [],
+        analyzedAt: latestDocument.clarityAnalyzedAt,
+        documentTitle: latestDocument.title
+      }
     }
   } catch (error) {
     console.error("Error getting latest clarity score:", error)
@@ -115,38 +179,10 @@ export async function getLatestClarityScoreForUserAction(): Promise<
   }
 }
 
-export async function cleanupOldClarityScoresAction(
-  daysToKeep: number = 30
-): Promise<ActionState<{ deletedCount: number }>> {
-  try {
-    const { userId } = await auth()
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
-    const cutoffDate = new Date()
-    cutoffDate.setDate(cutoffDate.getDate() - daysToKeep)
-
-    const deletedScores = await db
-      .delete(clarityScoresTable)
-      .where(
-        and(
-          eq(clarityScoresTable.userId, userId),
-          // Note: Using string comparison for timestamps in this context
-          eq(clarityScoresTable.createdAt, cutoffDate)
-        )
-      )
-      .returning()
-
-    return {
-      isSuccess: true,
-      message: `Cleaned up ${deletedScores.length} old clarity scores`,
-      data: { deletedCount: deletedScores.length }
-    }
-  } catch (error) {
-    console.error("Error cleaning up old clarity scores:", error)
-    return { isSuccess: false, message: "Failed to cleanup old scores" }
-  }
+// Helper function to generate text hash for caching
+export async function generateTextHash(text: string): Promise<string> {
+  return crypto.createHash("sha256").update(text.trim()).digest("hex")
 }
 
- 
+// Cleanup function removed - clarity scores are now part of documents
+// and should not be deleted separately

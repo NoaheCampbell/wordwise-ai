@@ -35,6 +35,7 @@ interface DocumentContextType {
   reloadClarityScore: () => void
   updateLiveClarityScore: (text: string) => Promise<void>
   clearLiveClarityScore: () => void
+  setSavedClarityScore: (clarityScore: AiClarityScore) => void
   setSuggestions: (suggestions: AISuggestion[]) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
   setCurrentContent: (content: string) => void
@@ -158,7 +159,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       if (result.isSuccess && result.data) {
         setLiveClarityScore(result.data)
       } else {
-        setLiveClarityScore(null)
+        // Don't clear the existing score if we can't calculate a new one
+        // This preserves saved scores when content is too short
       }
       setIsLoadingLiveScore(false)
     },
@@ -167,6 +169,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const clearLiveClarityScore = useCallback(() => {
     setLiveClarityScore(null)
+  }, [])
+
+  const setSavedClarityScore = useCallback((clarityScore: AiClarityScore) => {
+    setLiveClarityScore(clarityScore)
   }, [])
 
   useEffect(() => {
@@ -207,6 +213,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         reloadClarityScore,
         updateLiveClarityScore,
         clearLiveClarityScore,
+        setSavedClarityScore,
         setSuggestions,
         setIsAnalyzing,
         setCurrentContent,

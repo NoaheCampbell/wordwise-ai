@@ -203,7 +203,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
       
       contextSearchFrom = contextIndex + 1
     }
-    console.log('Context-based search failed, falling back to direct search')
   }
 
   // Second attempt: Direct search with word boundaries
@@ -796,14 +795,13 @@ export async function calculateClarityScoreForTextAction(
           isSuccess: true,
           message: "Clarity score retrieved from cache",
           data: {
-            score: cachedResult.data.score,
-            explanation: cachedResult.data.explanation,
-            highlights: cachedResult.data.highlights as string[]
+            score: cachedResult.data.clarityScore!,
+            explanation: cachedResult.data.clarityExplanation!,
+            highlights: cachedResult.data.clarityHighlights || []
           }
         }
       }
     } catch (error) {
-      console.log("Clarity scores table not ready yet, skipping cache check:", error)
       // Continue to AI analysis without cache
     }
 
@@ -878,19 +876,14 @@ Respond with valid JSON only:
 
     // Save to cache (with fallback if table doesn't exist)
     try {
-      const { createClarityScoreAction } = await import("@/actions/db/clarity-scores-actions")
-      await createClarityScoreAction({
-        userId,
-        documentId: documentId || null,
-        textHash,
+      const { saveClarityScoreToDocumentAction } = await import("@/actions/db/clarity-scores-actions")
+      await saveClarityScoreToDocumentAction(documentId || "temp-id", {
         score: Math.round(parsed.score),
         explanation: parsed.explanation || "",
         highlights: parsed.highlights || [],
-        textExcerpt: excerpt,
-        characterCount: excerpt.length
+        textHash
       })
     } catch (error) {
-      console.log("Clarity scores table not ready yet, skipping cache save:", error)
       // Continue without saving to cache
     }
 
@@ -931,7 +924,6 @@ export async function getAverageClarityScoreAction(): Promise<
         }
       }
     } catch (error) {
-      console.log("Clarity scores table not ready yet, returning null:", error)
     }
 
     // Fallback: No clarity scores exist or table not ready, return null

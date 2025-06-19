@@ -140,14 +140,10 @@ export function DocumentSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="grid grid-cols-2 gap-2 p-2">
-              {liveClarityScore && onDocumentPage ? (
+              {onDocumentPage && liveClarityScore && displayScore !== null ? (
                 <ClarityHighlightsDialog
                   clarityScore={liveClarityScore}
                   onHighlightPhrase={(phrase: string) => {
-                    console.log(
-                      "SIDEBAR - onHighlightPhrase called with:",
-                      phrase
-                    )
                     highlightPhrase(phrase)
                   }}
                   trigger={

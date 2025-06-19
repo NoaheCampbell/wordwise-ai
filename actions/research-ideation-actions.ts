@@ -182,7 +182,6 @@ export async function findRelevantArticlesAction(
     }
 
     const searchQuery = keywords.join(" ")
-    console.log(`Searching OpenAI web search for: ${searchQuery}`)
 
     // Build domain restrictions if provided
     let domainInstructions = ""
@@ -229,14 +228,9 @@ Focus on recent, authoritative sources that would be valuable for research and c
     }
 
     if (assistantMessage) {
-      console.log("ASSISTANT MESSAGE:", assistantMessage) // For debugging
-
       const articleRegex =
         /^\s*\d+\.\s*\*\*Title:\*\*\s*([^\n]+)\s*\n\s*\*\*URL:\*\*\s*\(\[.*?\]\(([^)]+)\)\)\s*\n\s*\*\*Summary:\*\*\s*([^\n]+)/gm
       const matches = [...assistantMessage.matchAll(articleRegex)]
-
-      console.log(`Found ${matches.length} articles from assistant message.`)
-
       searchResults = matches.slice(0, 5).map(match => ({
         title: (match[1] || "").trim().replace(/^"|"$/g, ""),
         url: (match[2] || "").trim(),
@@ -907,7 +901,6 @@ export async function writeFullDocumentAction(
     const keywords = await getSearchKeywords(ideaTitle, ideaContent)
     const articlesResult = await findRelevantArticlesAction(keywords, documentId)
     const sources = articlesResult.isSuccess ? articlesResult.data : []
-    console.log(`Found ${sources.length} sources to generate document.`)
 
     // 2. Write Full Document in one go
     await db
