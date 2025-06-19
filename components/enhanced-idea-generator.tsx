@@ -6,7 +6,7 @@ Enhanced Idea Generator component for Phase 5B.3 - Shows comprehensive past docu
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +23,8 @@ import {
   RefreshCw,
   Sparkles,
   BookOpen,
-  BarChart3
+  BarChart3,
+  X
 } from "lucide-react"
 import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
@@ -63,6 +64,23 @@ export function EnhancedIdeaGenerator({
     "headlines" | "topics" | "outlines"
   >("headlines")
   const [savedIdeasCount, setSavedIdeasCount] = useState(0)
+
+  // Add escape key functionality
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isOpen) {
+        onClose()
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener("keydown", handleEscape)
+    }
+
+    return () => {
+      document.removeEventListener("keydown", handleEscape)
+    }
+  }, [isOpen, onClose])
 
   const generateIdeas = async (type: "headlines" | "topics" | "outlines") => {
     // Check if we have any analysis to work with
@@ -152,11 +170,11 @@ export function EnhancedIdeaGenerator({
             </div>
           </div>
           <Button
-            variant="outline"
             onClick={onClose}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
+            size="sm"
+            className="border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
           >
-            Close
+            <X className="size-4" />
           </Button>
         </div>
 
@@ -189,9 +207,8 @@ export function EnhancedIdeaGenerator({
             <Button
               onClick={onGenerate}
               disabled={isGenerating}
-              variant="outline"
               size="sm"
-              className="border-gray-300 text-gray-700 hover:bg-gray-50"
+              className="border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
             >
               {isGenerating ? (
                 <RefreshCw className="mr-2 size-4 animate-spin" />

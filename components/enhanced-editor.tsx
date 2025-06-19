@@ -2410,6 +2410,23 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }, [document?.id])
 
+  // Add escape key functionality for suggestion popup
+  useEffect(() => {
+    const handleEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape" && selectedSuggestion) {
+        setSelectedSuggestion(null)
+      }
+    }
+
+    if (selectedSuggestion) {
+      window.document.addEventListener("keydown", handleEscape)
+    }
+
+    return () => {
+      window.document.removeEventListener("keydown", handleEscape)
+    }
+  }, [selectedSuggestion])
+
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
@@ -2913,12 +2930,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                   </Badge>
                 </div>
               </div>
-              <button
+              <Button
                 onClick={() => setSelectedSuggestion(null)}
-                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                size="sm"
+                className="border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
               >
-                <X className="size-5" />
-              </button>
+                <X className="size-4" />
+              </Button>
             </div>
 
             <p className="mb-6 text-gray-700">
@@ -2943,9 +2961,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
             <div className="flex gap-3">
               <Button
-                variant="outline"
                 onClick={() => dismissSuggestionById(selectedSuggestion.id)}
-                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="flex-1 border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
               >
                 Dismiss
               </Button>
