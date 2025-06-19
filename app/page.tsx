@@ -6,6 +6,11 @@ import { TopNav } from "@/components/top-nav"
 import { EnhancedEditor } from "@/components/enhanced-editor"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
 import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle
+} from "@/components/ui/resizable"
 import { useUser } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
@@ -39,28 +44,44 @@ export default function WritingApp() {
 
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen w-full bg-gray-50">
-        <DocumentSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopNav />
-
-          {/* Email verification banner */}
-          <div className="px-6 pt-4">
-            <EmailVerificationBanner />
-          </div>
-
-          <main className="flex min-h-0 flex-1">
-            {/* Main Editor Column */}
-            <div className="min-w-0 flex-[2] p-6">
-              <EnhancedEditor />
+      <div className="flex h-screen w-full flex-col bg-gray-50">
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+            <div style={{ "--sidebar-width": "100%" } as React.CSSProperties}>
+              <DocumentSidebar />
             </div>
+          </ResizablePanel>
 
-            {/* AI Suggestions Panel */}
-            <div className="min-w-0 flex-1 border-l border-gray-200 bg-white">
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={55} minSize={30}>
+            <div className="flex h-full flex-col">
+              <TopNav />
+
+              {/* Email verification banner */}
+              <div className="shrink-0 px-6 pt-4">
+                <EmailVerificationBanner />
+              </div>
+
+              <main className="min-h-0 flex-1">
+                {/* Main Editor Column */}
+                <div className="h-full overflow-y-auto">
+                  <div className="p-6">
+                    <EnhancedEditor />
+                  </div>
+                </div>
+              </main>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+            <div className="h-full border-l border-gray-200 bg-white">
               <AISuggestionsPanel />
             </div>
-          </main>
-        </div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     </SidebarProvider>
   )

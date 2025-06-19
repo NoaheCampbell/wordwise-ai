@@ -11,6 +11,11 @@ import { DocumentSidebar } from "@/components/document-sidebar"
 import { TopNav } from "@/components/top-nav"
 import { AISuggestionsPanel } from "@/components/ai-suggestions-panel"
 import { EmailVerificationBanner } from "@/components/auth/email-verification-banner"
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle
+} from "@/components/ui/resizable"
 import { ArrowLeft, Save, Settings, Undo, Redo, Trash2 } from "lucide-react"
 import {
   getDocumentAction,
@@ -247,25 +252,41 @@ export default function DocumentPage() {
 
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen w-full bg-gray-50">
-        <DocumentSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <TopNav />
-          {/* Email verification banner */}
-          <div className="px-6 pt-4">
-            <EmailVerificationBanner />
-          </div>
-
-          <main className="flex min-h-0 flex-1 overflow-hidden">
-            {/* Main Editor Column */}
-            <div className="min-w-0 flex-1 overflow-hidden p-6">
-              <EnhancedEditor initialDocument={document} />
+      <div className="flex h-screen w-full flex-col bg-gray-50">
+        <ResizablePanelGroup direction="horizontal" className="flex-1">
+          <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
+            <div style={{ "--sidebar-width": "100%" } as React.CSSProperties}>
+              <DocumentSidebar />
             </div>
+          </ResizablePanel>
 
-            {/* AI Suggestions Panel */}
-          </main>
-        </div>
-        <AiSuggestionsSidebar />
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={55} minSize={30}>
+            <div className="flex h-full flex-col">
+              <TopNav />
+              {/* Email verification banner */}
+              <div className="shrink-0 px-6 pt-4">
+                <EmailVerificationBanner />
+              </div>
+
+              <main className="min-h-0 flex-1">
+                {/* Main Editor Column */}
+                <div className="h-full overflow-y-auto">
+                  <div className="p-6">
+                    <EnhancedEditor initialDocument={document} />
+                  </div>
+                </div>
+              </main>
+            </div>
+          </ResizablePanel>
+
+          <ResizableHandle />
+
+          <ResizablePanel defaultSize={25} minSize={20} maxSize={40}>
+            <AiSuggestionsSidebar />
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
         <AlertDialogContent>
