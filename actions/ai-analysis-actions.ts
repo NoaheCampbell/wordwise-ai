@@ -29,6 +29,19 @@ const rateLimiter = new Map<string, { count: number; resetTime: number }>()
 const RATE_LIMIT_MAX = 60 // Max requests per hour
 const RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour in milliseconds
 
+// Add after the existing imports and constants
+export interface ContentRegion {
+  type: 'subject' | 'intro' | 'body' | 'cta' | 'closing'
+  start: number
+  end: number
+  text: string
+  confidence: number
+}
+
+export interface ContextAwareAnalysisRequest extends AnalyzeTextRequest {
+  enableContextAware?: boolean
+}
+
 /**
  * Generate cache key from text and mode
  */
@@ -316,8 +329,6 @@ function truncateAtSentenceBoundary(text: string, maxLength: number): string {
   
   return result || text.slice(0, maxLength)
 }
-
-
 
 function findTextSpan(fullText: string, searchText: string, usedPositions: Set<number>, context?: string): { start: number; end: number } | null {
   
@@ -1142,5 +1153,504 @@ Rewritten Text:`
   } catch (error) {
     console.error("Error rewriting text with tone:", error)
     return { isSuccess: false, message: "An error occurred while rewriting the text." }
+  }
+}
+
+/**
+ * Detect content regions in newsletter/email text
+ */
+function detectContentRegions(text: string): ContentRegion[] {
+  const regions: ContentRegion[] = []
+  const lines = text.split('\n').filter(line => line.trim().length > 0)
+  
+  if (lines.length === 0) return regions
+
+  let currentPosition = 0
+  
+  // Find subject line (usually first line if short and compelling)
+  const firstLine = lines[0].trim()
+  if (firstLine.length > 0 && firstLine.length <= 100 && !firstLine.endsWith('.')) {
+    const subjectEnd = text.indexOf('\n') > -1 ? text.indexOf('\n') : firstLine.length
+    regions.push({
+      type: 'subject',
+      start: 0,
+      end: subjectEnd,
+      text: firstLine,
+      confidence: firstLine.length <= 60 ? 0.9 : 0.7
+    })
+    currentPosition = subjectEnd + 1
+  }
+
+  // Find intro paragraph (first substantial paragraph)
+  const sentences = splitIntoSentences(text.substring(currentPosition))
+  if (sentences.length > 0) {
+    const firstParagraphEnd = text.indexOf('\n\n', currentPosition)
+    const introText = firstParagraphEnd > -1 
+      ? text.substring(currentPosition, firstParagraphEnd)
+      : sentences.slice(0, Math.min(3, sentences.length)).join(' ')
+    
+    if (introText.trim().length > 20) {
+      regions.push({
+        type: 'intro',
+        start: currentPosition,
+        end: currentPosition + introText.length,
+        text: introText.trim(),
+        confidence: 0.8
+      })
+      currentPosition += introText.length
+    }
+  }
+
+  // Find CTA sections (look for action words and links)
+  const ctaPatterns = [
+    /\b(click|read|download|subscribe|join|sign up|get|buy|purchase|order|learn more|discover|explore|try|start|begin)\b/gi,
+    /\b(here|now|today|free|limited|exclusive|special)\b/gi,
+    /(https?:\/\/[^\s]+)/gi,
+    /\[([^\]]+)\]\([^)]+\)/g // Markdown links
+  ]
+
+  const remainingText = text.substring(currentPosition)
+  const ctaMatches: Array<{start: number, end: number, text: string, score: number}> = []
+
+  // Score potential CTA sections
+  const paragraphs = remainingText.split('\n\n')
+  let paragraphStart = currentPosition
+
+  paragraphs.forEach(paragraph => {
+    if (paragraph.trim().length > 10) {
+      let ctaScore = 0
+      
+      ctaPatterns.forEach(pattern => {
+        const matches = paragraph.match(pattern)
+        if (matches) {
+          ctaScore += matches.length * (pattern.source.includes('http') ? 3 : 1)
+        }
+      })
+
+      // Bonus for short, punchy paragraphs
+      if (paragraph.length < 200 && ctaScore > 0) {
+        ctaScore += 2
+      }
+
+      // Bonus for paragraph position (CTAs often at end)
+      const positionBonus = (paragraphStart / text.length) * 2
+      ctaScore += positionBonus
+
+      if (ctaScore >= 2) {
+        ctaMatches.push({
+          start: paragraphStart,
+          end: paragraphStart + paragraph.length,
+          text: paragraph.trim(),
+          score: ctaScore
+        })
+      }
+    }
+    paragraphStart += paragraph.length + 2 // +2 for \n\n
+  })
+
+  // Add the highest scoring CTA sections
+  ctaMatches
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2) // Max 2 CTA regions
+    .forEach(cta => {
+      regions.push({
+        type: 'cta',
+        start: cta.start,
+        end: cta.end,
+        text: cta.text,
+        confidence: Math.min(0.95, cta.score / 10)
+      })
+    })
+
+  // Fill in body regions for remaining text
+  const usedRanges = regions.map(r => ({start: r.start, end: r.end}))
+  let bodyStart = 0
+  
+  usedRanges.sort((a, b) => a.start - b.start)
+  
+  usedRanges.forEach((range, index) => {
+    if (bodyStart < range.start) {
+      const bodyText = text.substring(bodyStart, range.start).trim()
+      if (bodyText.length > 50) {
+        regions.push({
+          type: 'body',
+          start: bodyStart,
+          end: range.start,
+          text: bodyText,
+          confidence: 0.6
+        })
+      }
+    }
+    bodyStart = range.end
+  })
+
+  // Add final body section if there's remaining text
+  if (bodyStart < text.length) {
+    const bodyText = text.substring(bodyStart).trim()
+    if (bodyText.length > 50) {
+      regions.push({
+        type: 'body',
+        start: bodyStart,
+        end: text.length,
+        text: bodyText,
+        confidence: 0.6
+      })
+    }
+  }
+
+  return regions.sort((a, b) => a.start - b.start)
+}
+
+/**
+ * Get context-specific prompt adjustments based on content region
+ */
+function getContextSpecificPrompt(region: ContentRegion, analysisTypes: SuggestionType[]): string {
+  const basePrompt = generateCombinedPrompt(region.text, analysisTypes)
+  
+  let contextualAdditions = ""
+  
+  switch (region.type) {
+    case 'subject':
+      contextualAdditions = `
+CONTEXT: This is an EMAIL SUBJECT LINE. Apply these additional criteria:
+- Keep under 60 characters for mobile optimization
+- Create curiosity or urgency without being clickbait
+- Avoid spam trigger words (FREE, URGENT, !!!, etc.)
+- Make it specific and actionable
+- Consider personalization opportunities
+- Test for clarity - would the recipient understand what to expect?`
+      break
+      
+    case 'intro':
+      contextualAdditions = `
+CONTEXT: This is the OPENING/INTRO section. Apply these additional criteria:
+- Hook the reader immediately with a compelling opening
+- Establish relevance to the reader's interests/needs
+- Set clear expectations for what follows
+- Use active voice and engaging language
+- Avoid generic greetings - make it personal and specific
+- Consider opening with a question, story, or surprising fact`
+      break
+      
+    case 'cta':
+      contextualAdditions = `
+CONTEXT: This is a CALL-TO-ACTION section. Apply these additional criteria:
+- Use strong action verbs (Get, Start, Join, Discover, etc.)
+- Create urgency without being pushy
+- Be specific about what happens next
+- Remove friction and barriers
+- Make the value proposition clear
+- Use contrasting language that stands out
+- Keep button text under 5 words when possible`
+      break
+      
+    case 'body':
+      contextualAdditions = `
+CONTEXT: This is BODY CONTENT. Apply these additional criteria:
+- Maintain reader engagement throughout
+- Use storytelling techniques where appropriate
+- Break up long paragraphs for scannability
+- Include specific examples or social proof
+- Transition smoothly between ideas
+- Build toward the call-to-action naturally`
+      break
+      
+    case 'closing':
+      contextualAdditions = `
+CONTEXT: This is the CLOSING section. Apply these additional criteria:
+- Reinforce the main message
+- Create a sense of completion
+- Include appropriate sign-off
+- Consider adding a P.S. for important additional info
+- Maintain professional but warm tone`
+      break
+  }
+  
+  return basePrompt + contextualAdditions
+}
+
+/**
+ * Context-aware text analysis that detects regions and applies targeted suggestions
+ */
+export async function analyzeTextWithContextAction(
+  request: ContextAwareAnalysisRequest,
+  documentId?: string,
+  saveSuggestions: boolean = false
+): Promise<ActionState<AnalysisResult & { regions: ContentRegion[] }>> {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      return {
+        isSuccess: false,
+        message: "OpenAI API key not configured"
+      }
+    }
+
+    const { text, analysisTypes, enableContextAware = true } = request
+    
+    // Apply safety validation
+    const validation = validateInput(text)
+    if (!validation.isValid) {
+      return {
+        isSuccess: false,
+        message: validation.message!
+      }
+    }
+
+    // Check rate limits for authenticated users
+    const { userId: authUserId } = await auth()
+    if (authUserId && !checkRateLimit(authUserId)) {
+      return {
+        isSuccess: false,
+        message: "Rate limit exceeded. Please try again later."
+      }
+    }
+
+    let allSuggestions: AISuggestion[] = []
+    let detectedRegions: ContentRegion[] = []
+
+    if (enableContextAware) {
+      // Detect content regions
+      detectedRegions = detectContentRegions(text)
+      
+      if (detectedRegions.length === 0) {
+        // Fallback to regular analysis if no regions detected
+        const fallbackResult = await analyzeTextAction(request, documentId, saveSuggestions)
+        if (fallbackResult.isSuccess && fallbackResult.data) {
+          return {
+            isSuccess: true,
+            message: "Analysis completed (no regions detected)",
+            data: {
+              ...fallbackResult.data,
+              regions: []
+            }
+          }
+        }
+        return {
+          isSuccess: false,
+          message: fallbackResult.message
+        }
+      }
+
+      // Analyze each region with context-specific prompts
+      const regionAnalysisPromises = detectedRegions.map(async (region) => {
+        try {
+          const contextPrompt = getContextSpecificPrompt(region, analysisTypes)
+          
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: contextPrompt }],
+            temperature: 0.2,
+            max_tokens: MAX_OUTPUT_TOKENS,
+            response_format: { type: "json_object" },
+          })
+
+          const responseContent = response.choices[0]?.message?.content || '{ "suggestions": [] }'
+          const parsedJson = JSON.parse(responseContent)
+          const rawSuggestions = parsedJson.suggestions || []
+
+          if (!Array.isArray(rawSuggestions)) {
+            console.warn(`Region ${region.type} did not return valid suggestions array`)
+            return []
+          }
+
+          // Process suggestions for this region
+          const usedPositions = new Set<number>()
+          const regionSuggestions: AISuggestion[] = rawSuggestions
+            .map((rawSugg: any) => {
+              if (!rawSugg.type || !rawSugg.originalText || !rawSugg.suggestedText) {
+                return null
+              }
+
+              // Find position within the full text (not just the region)
+              const span = findTextSpan(text, rawSugg.originalText, usedPositions, rawSugg.context)
+              if (!span) {
+                return null
+              }
+              
+              const { type, originalText, suggestedText, explanation, confidence } = rawSugg
+
+              // Customize icon and title based on region context
+              let icon = "✨"
+              let title = type.split("-").map((word: string) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")
+              
+              // Region-specific customization
+              if (region.type === 'subject') {
+                icon = "📧"
+                title = `Subject Line ${title}`
+              } else if (region.type === 'intro') {
+                icon = "🎯"
+                title = `Opening ${title}`
+              } else if (region.type === 'cta') {
+                icon = "🚀"
+                title = `CTA ${title}`
+              } else if (type === 'spelling') {
+                icon = "✍️"
+                title = "Spelling Correction"
+              } else if (type === 'grammar') {
+                icon = "🧐"
+                title = "Grammar Correction"
+              }
+
+              const suggestionId = crypto.randomUUID()
+
+              return {
+                id: suggestionId,
+                type,
+                span: { ...span, text: originalText },
+                originalText,
+                suggestedText,
+                description: explanation || "A context-aware suggestion for improvement.",
+                confidence: Math.min(100, Math.max(0, confidence || 80)),
+                icon,
+                title,
+                region: region.type // Add region context to suggestion
+              }
+            })
+            .filter(Boolean) as AISuggestion[]
+
+          return regionSuggestions
+        } catch (error) {
+          console.error(`Error analyzing region ${region.type}:`, error)
+          return []
+        }
+      })
+
+      // Wait for all region analyses to complete
+      const regionResults = await Promise.all(regionAnalysisPromises)
+      allSuggestions = regionResults.flat()
+
+    } else {
+      // Use regular analysis if context-aware is disabled
+      const regularResult = await analyzeTextAction(request, documentId, saveSuggestions)
+      if (regularResult.isSuccess && regularResult.data) {
+        allSuggestions = regularResult.data.overallSuggestions
+      } else {
+        return {
+          isSuccess: false,
+          message: regularResult.message
+        }
+      }
+    }
+
+    // Save suggestions to database if requested and documentId is provided
+    if (saveSuggestions && documentId && allSuggestions.length > 0) {
+      const { userId } = await auth()
+      if (userId) {
+        // Save each suggestion to the database
+        const savePromises = allSuggestions.map(suggestion => 
+          createSuggestionAction({
+            documentId,
+            type: suggestion.type as any, // Type assertion for enum compatibility
+            originalText: suggestion.originalText,
+            suggestedText: suggestion.suggestedText,
+            explanation: suggestion.description,
+            startPosition: suggestion.span?.start || 0,
+            endPosition: suggestion.span?.end || 0,
+            isAccepted: false
+          })
+        )
+        
+        // Execute all saves in parallel but don't wait for them to complete
+        Promise.all(savePromises).catch(error => {
+          console.error("Error saving context-aware suggestions to database:", error)
+        })
+      }
+    }
+
+    // Sort suggestions by position
+    allSuggestions.sort((a, b) => (a.span?.start ?? 0) - (b.span?.start ?? 0))
+
+    const result = {
+      grammarErrors: [],
+      styleSuggestions: [],
+      overallSuggestions: allSuggestions,
+      regions: detectedRegions
+    }
+
+    return {
+      isSuccess: true,
+      message: `Context-aware analysis completed successfully. Found ${allSuggestions.length} suggestions across ${detectedRegions.length} regions.`,
+      data: result
+    }
+  } catch (error) {
+    console.error("Error in context-aware text analysis:", error)
+    return {
+      isSuccess: false,
+      message: "Failed to perform context-aware analysis"
+    }
+  }
+}
+
+/**
+ * Auto-trigger context-aware suggestions on typing pause
+ */
+export async function autoTriggerContextSuggestionsAction(
+  text: string,
+  documentId?: string,
+  lastAnalyzedLength: number = 0
+): Promise<ActionState<AnalysisResult & { regions: ContentRegion[], shouldTrigger: boolean }>> {
+  try {
+    // Only trigger if significant content has been added
+    const MIN_CONTENT_CHANGE = 50 // Minimum characters changed to trigger
+    const MIN_CONTENT_LENGTH = 100 // Minimum total content length
+    
+    if (text.length < MIN_CONTENT_LENGTH) {
+      return {
+        isSuccess: true,
+        message: "Content too short for auto-analysis",
+        data: {
+          grammarErrors: [],
+          styleSuggestions: [],
+          overallSuggestions: [],
+          regions: [],
+          shouldTrigger: false
+        }
+      }
+    }
+
+    const contentChange = Math.abs(text.length - lastAnalyzedLength)
+    if (contentChange < MIN_CONTENT_CHANGE) {
+      return {
+        isSuccess: true,
+        message: "Insufficient content change for auto-analysis",
+        data: {
+          grammarErrors: [],
+          styleSuggestions: [],
+          overallSuggestions: [],
+          regions: [],
+          shouldTrigger: false
+        }
+      }
+    }
+
+    // Perform context-aware analysis with focus on most important issues
+    const result = await analyzeTextWithContextAction(
+      {
+        text,
+        analysisTypes: ["grammar", "spelling", "clarity"], // Focus on key issues for auto-trigger
+        enableContextAware: true
+      },
+      documentId,
+      true // Save suggestions
+    )
+
+    if (result.isSuccess && result.data) {
+      return {
+        isSuccess: true,
+        message: result.message,
+        data: {
+          ...result.data,
+          shouldTrigger: true
+        }
+      }
+    }
+
+    return result as any
+  } catch (error) {
+    console.error("Error in auto-trigger context suggestions:", error)
+    return {
+      isSuccess: false,
+      message: "Failed to auto-trigger context suggestions"
+    }
   }
 } 
