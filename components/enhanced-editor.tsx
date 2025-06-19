@@ -49,6 +49,7 @@ import {
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { useDocument } from "@/components/utilities/document-provider"
+import { ClarityHighlightsDialog } from "@/components/clarity-highlights-dialog"
 import {
   createDocumentAction,
   updateDocumentAction,
@@ -186,6 +187,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const {
     reloadDocuments,
     reloadClarityScore,
+    liveClarityScore,
+    updateLiveClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
     registerGenerateNewIdeas,
@@ -219,6 +222,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const contentRef = useRef(content)
   const [contentForWordCount, setContentForWordCount] = useState(content)
+
+  // Debounced clarity score update (700ms as per guidelines)
+  const debouncedClarityUpdate = useRef<NodeJS.Timeout | null>(null)
 
   const [history, setHistory] = useState<string[]>([])
   const [currentHistoryIndex, setCurrentHistoryIndex] = useState(-1)
@@ -981,6 +987,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const handleRewrite = async (tone: string) => {
     await handleRewriteWithValidation(tone)
+  }
+
+  // Handle rewriting clarity highlights
+  const handleRewriteHighlight = async (highlightText: string) => {
+    await handleRewriteWithValidation("Clear", highlightText)
   }
 
   // Bibliography management functions
@@ -1940,6 +1951,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setHasManuallyEdited(true)
     lastContentLength.current = newLength
 
+    // Debounced clarity score update (700ms as per guidelines)
+    if (debouncedClarityUpdate.current) {
+      clearTimeout(debouncedClarityUpdate.current)
+    }
+    debouncedClarityUpdate.current = setTimeout(() => {
+      if (newContent.trim().length > 0) {
+        updateLiveClarityScore(newContent)
+      }
+    }, 700)
+
     if (newContent !== (history[currentHistoryIndex] || "")) {
       const newHistory = history.slice(0, currentHistoryIndex + 1)
       setHistory([...newHistory, newContent])
@@ -2580,6 +2601,28 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             isOpen={isSocialSnippetOpen}
             onOpenChange={setIsSocialSnippetOpen}
           />
+
+          {/* Clarity Score Widget */}
+          {liveClarityScore && (
+            <ClarityHighlightsDialog
+              clarityScore={liveClarityScore}
+              onRewriteHighlight={handleRewriteHighlight}
+              trigger={
+                <Badge
+                  variant="outline"
+                  className={`cursor-pointer text-xs transition-colors ${
+                    liveClarityScore.score >= 90
+                      ? "border-green-500 text-green-700 hover:bg-green-50"
+                      : liveClarityScore.score >= 60
+                        ? "border-amber-500 text-amber-700 hover:bg-amber-50"
+                        : "border-red-500 text-red-700 hover:bg-red-50"
+                  }`}
+                >
+                  Clarity: {liveClarityScore.score}/100
+                </Badge>
+              }
+            />
+          )}
 
           {highlights.length > 0 && (
             <Badge variant="secondary" className="text-xs">

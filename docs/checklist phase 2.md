@@ -84,6 +84,14 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 - [ ] Detect and stop runaway generation loops  
 - [ ] Disable AI suggestions on repeated failures  
 
+### 4.3 Engagement Heat-Map Import  
+• Connect ESP API (e.g., Mailchimp/ConvertKit) → fetch last issue click-map JSON  
+• Map URL anchors to positions in current draft  
+• Overlay “hot” (🟢) and “cold” (🔴) badges inline  
+• Tooltip shows click-thru % and quick-edit prompt (“Rewrite cold section”)  
+• Cache heat-map data locally for offline review  
+• Toggle overlay on/off in toolbar
+
 ---
 
 ## Phase 5A – Style & Clarity Analysis

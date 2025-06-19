@@ -25,6 +25,7 @@ import {
   Lightbulb
 } from "lucide-react"
 import { IdeasDialog } from "@/components/ideas-dialog"
+import { ClarityHighlightsDialog } from "@/components/clarity-highlights-dialog"
 import { useUser } from "@clerk/nextjs"
 import { useRouter, usePathname } from "next/navigation"
 import { createDocumentAction } from "@/actions/db/documents-actions"
@@ -58,8 +59,20 @@ export function DocumentSidebar() {
   } = useDocument()
 
   const onDocumentPage = pathname.includes("/document/")
-  const displayScore = onDocumentPage ? liveClarityScore : clarityScore
+  const displayScore = onDocumentPage
+    ? (liveClarityScore?.score ?? null)
+    : clarityScore
   const isScoreLoading = onDocumentPage ? isLoadingLiveScore : isLoading
+
+  // Get color based on clarity score
+  const getScoreColor = (score: number | null) => {
+    if (score === null) return "blue"
+    if (score >= 90) return "green"
+    if (score >= 60) return "amber"
+    return "red"
+  }
+
+  const scoreColor = getScoreColor(displayScore)
 
   const handleNewDocument = async () => {
     if (!user) return
@@ -126,19 +139,140 @@ export function DocumentSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="grid grid-cols-2 gap-2 p-2">
-              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-center">
-                <TrendingUp className="mx-auto mb-1 size-4 text-blue-700" />
-                <div className="text-sm font-semibold text-blue-900">
-                  {isScoreLoading ? (
-                    <div className="mx-auto size-4 animate-spin rounded-full border-b-2 border-blue-600" />
-                  ) : (
-                    (displayScore ?? "--")
-                  )}
+              {liveClarityScore && onDocumentPage ? (
+                <ClarityHighlightsDialog
+                  clarityScore={liveClarityScore}
+                  trigger={
+                    <div
+                      className={`cursor-pointer rounded-lg border transition-colors ${
+                        scoreColor === "green"
+                          ? "border-green-200 bg-green-50 hover:bg-green-100"
+                          : scoreColor === "amber"
+                            ? "border-amber-200 bg-amber-50 hover:bg-amber-100"
+                            : scoreColor === "red"
+                              ? "border-red-200 bg-red-50 hover:bg-red-100"
+                              : "border-blue-200 bg-blue-50 hover:bg-blue-100"
+                      } p-3 text-center`}
+                    >
+                      <TrendingUp
+                        className={`mx-auto mb-1 size-4 ${
+                          scoreColor === "green"
+                            ? "text-green-700"
+                            : scoreColor === "amber"
+                              ? "text-amber-700"
+                              : scoreColor === "red"
+                                ? "text-red-700"
+                                : "text-blue-700"
+                        }`}
+                      />
+                      <div
+                        className={`text-sm font-semibold ${
+                          scoreColor === "green"
+                            ? "text-green-900"
+                            : scoreColor === "amber"
+                              ? "text-amber-900"
+                              : scoreColor === "red"
+                                ? "text-red-900"
+                                : "text-blue-900"
+                        }`}
+                      >
+                        {isScoreLoading ? (
+                          <div
+                            className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
+                              scoreColor === "green"
+                                ? "border-green-600"
+                                : scoreColor === "amber"
+                                  ? "border-amber-600"
+                                  : scoreColor === "red"
+                                    ? "border-red-600"
+                                    : "border-blue-600"
+                            }`}
+                          />
+                        ) : (
+                          (displayScore ?? "--")
+                        )}
+                      </div>
+                      <div
+                        className={`text-xs font-medium ${
+                          scoreColor === "green"
+                            ? "text-green-700"
+                            : scoreColor === "amber"
+                              ? "text-amber-700"
+                              : scoreColor === "red"
+                                ? "text-red-700"
+                                : "text-blue-700"
+                        }`}
+                      >
+                        Clarity Score
+                      </div>
+                    </div>
+                  }
+                />
+              ) : (
+                <div
+                  className={`rounded-lg border ${
+                    scoreColor === "green"
+                      ? "border-green-200 bg-green-50"
+                      : scoreColor === "amber"
+                        ? "border-amber-200 bg-amber-50"
+                        : scoreColor === "red"
+                          ? "border-red-200 bg-red-50"
+                          : "border-blue-200 bg-blue-50"
+                  } p-3 text-center`}
+                >
+                  <TrendingUp
+                    className={`mx-auto mb-1 size-4 ${
+                      scoreColor === "green"
+                        ? "text-green-700"
+                        : scoreColor === "amber"
+                          ? "text-amber-700"
+                          : scoreColor === "red"
+                            ? "text-red-700"
+                            : "text-blue-700"
+                    }`}
+                  />
+                  <div
+                    className={`text-sm font-semibold ${
+                      scoreColor === "green"
+                        ? "text-green-900"
+                        : scoreColor === "amber"
+                          ? "text-amber-900"
+                          : scoreColor === "red"
+                            ? "text-red-900"
+                            : "text-blue-900"
+                    }`}
+                  >
+                    {isScoreLoading ? (
+                      <div
+                        className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
+                          scoreColor === "green"
+                            ? "border-green-600"
+                            : scoreColor === "amber"
+                              ? "border-amber-600"
+                              : scoreColor === "red"
+                                ? "border-red-600"
+                                : "border-blue-600"
+                        }`}
+                      />
+                    ) : (
+                      (displayScore ?? "--")
+                    )}
+                  </div>
+                  <div
+                    className={`text-xs font-medium ${
+                      scoreColor === "green"
+                        ? "text-green-700"
+                        : scoreColor === "amber"
+                          ? "text-amber-700"
+                          : scoreColor === "red"
+                            ? "text-red-700"
+                            : "text-blue-700"
+                    }`}
+                  >
+                    Clarity Score
+                  </div>
                 </div>
-                <div className="text-xs font-medium text-blue-700">
-                  Clarity Score
-                </div>
-              </div>
+              )}
               <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center">
                 <BarChart3 className="mx-auto mb-1 size-4 text-green-700" />
                 <div className="text-sm font-semibold text-green-900">
