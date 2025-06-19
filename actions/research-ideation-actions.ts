@@ -12,7 +12,7 @@ import OpenAI from "openai"
 import { auth } from "@clerk/nextjs/server"
 import { createIdeaAction, createResearchSourceAction } from "@/actions/db/ideas-actions"
 import { db } from "@/db/db"
-import { documentsTable, SelectDocument } from "@/db/schema"
+import { documentsTable, SelectDocument, documentStatusEnum } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import {
   DocumentAnalysis,
@@ -757,7 +757,11 @@ export async function saveIdeaAction(
  * Convert an idea into a new document with recommended sources
  */
 // Quick enhanced content generation (synchronous, no AI calls)
-function generateQuickEnhancedContent(ideaTitle: string, ideaContent: string, ideaType: string): string {
+function generateQuickEnhancedContent(
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): string {
   if (ideaType === "headline") {
     return `# ${ideaTitle}
 
@@ -887,127 +891,112 @@ ${ideaContent}
   }
 }
 
-// Background function for source finding and cleanup
-async function findSourcesAndCleanupInBackground(
-  documentId: string,
-  ideaTitle: string,
-  ideaContent: string,
-  ideaId: string
-) {
-  try {
-    console.log(`Starting background source finding for document ${documentId}`)
-    
-    // Generate keywords for finding sources
-    const keywordPrompt = `
-Extract 5-8 relevant keywords for finding research sources about this topic:
-
-Title: ${ideaTitle}
-Content: ${ideaContent}
-
-Return only a JSON object with a keywords array:
-{"keywords": ["keyword1", "keyword2", "keyword3"]}
-`
-
-    const keywordResponse = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: keywordPrompt }],
-      temperature: 0.3,
-      max_tokens: 100,
-      response_format: { type: "json_object" }
-    })
-
-    let keywords: string[] = []
-    try {
-      const keywordResult = JSON.parse(keywordResponse.choices[0]?.message?.content || '{"keywords": []}')
-      keywords = keywordResult.keywords || []
-    } catch (e) {
-      // Fallback keywords based on title and content
-      keywords = [ideaTitle, ...ideaContent.split(" ").slice(0, 5)]
-    }
-
-    // Find relevant sources
-    try {
-      const sourcesResult = await findRelevantArticlesAction(
-        keywords,
-        documentId,
-        [], // no domain restrictions
-        [] // no domain exclusions
-      )
-
-      if (sourcesResult.isSuccess) {
-        console.log(`Found ${sourcesResult.data.length} sources for document ${documentId}`)
-      }
-    } catch (error) {
-      console.warn("Could not find sources for new document:", error)
-    }
-
-    // Remove the idea from the database since it's now a document
-    try {
-      const { deleteIdeaAction } = await import("@/actions/db/ideas-actions")
-      await deleteIdeaAction(ideaId)
-      console.log(`Deleted original idea ${ideaId}`)
-    } catch (error) {
-      console.warn("Could not delete original idea:", error)
-    }
-
-  } catch (error) {
-    console.error("Error in background source finding:", error)
-  }
-}
-
+/**
+ * Creates a document from an idea.
+ * This just creates the entry in the database. The content generation is handled by another action.
+ */
 export async function convertIdeaToDocumentAction(
   ideaId: string,
-  ideaTitle: string,
-  ideaContent: string,
-  ideaType: string
-): Promise<ActionState<{ documentId: string; sourcesFound: number }>> {
+  ideaTitle: string
+): Promise<ActionState<{ documentId: string }>> {
   try {
     const { userId } = await auth()
     if (!userId) {
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    if (!checkResearchRateLimit(userId)) {
-      return {
-        isSuccess: false,
-        message: "Research rate limit exceeded. Please try again later."
-      }
+    // Create a new document with a placeholder status
+    const [newDocument] = await db
+      .insert(documentsTable)
+      .values({
+        userId,
+        title: ideaTitle,
+        content: "Generating content...",
+        status: "generating"
+      })
+      .returning({ id: documentsTable.id })
+
+    if (!newDocument) {
+      return { isSuccess: false, message: "Failed to create document." }
     }
-
-    // Generate enhanced content immediately (but simplified)
-    let enhancedContent = generateQuickEnhancedContent(ideaTitle, ideaContent, ideaType)
-    
-    // Create document with enhanced content right away
-    const { createDocumentAction } = await import("@/actions/db/documents-actions")
-    const docResult = await createDocumentAction({
-      title: ideaTitle,
-      content: enhancedContent,
-      isPublic: false
-    })
-
-    if (!docResult.isSuccess) {
-      return { isSuccess: false, message: docResult.message }
-    }
-
-    const newDocumentId = docResult.data.id
-
-    // Do source finding and idea cleanup in background (don't await)
-    findSourcesAndCleanupInBackground(newDocumentId, ideaTitle, ideaContent, ideaId).catch((error: any) => {
-      console.error("Background source finding failed:", error)
-    })
 
     return {
       isSuccess: true,
-      message: "Document created! Enhanced content is being generated...",
-      data: { documentId: newDocumentId, sourcesFound: 0 }
+      message: "Document creation initiated",
+      data: { documentId: newDocument.id }
     }
   } catch (error) {
-    console.error("Error converting idea to document:", error)
-    return { isSuccess: false, message: "Failed to convert idea to document" }
+    console.error("Error initiating document from idea:", error)
+    return {
+      isSuccess: false,
+      message: "Failed to initiate document creation."
+    }
   }
 }
 
+/**
+ * Generates the full content for a document that was created from an idea.
+ */
+export async function generateDocumentFromIdeaAction(
+  documentId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): Promise<ActionState<{ documentId: string }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
 
+    // 1. Generate the actual content
+    const generatedContent = generateQuickEnhancedContent(
+      ideaTitle,
+      ideaContent,
+      ideaType
+    )
+
+    // 2. Update the document with the new content and status
+    const [updatedDocument] = await db
+      .update(documentsTable)
+      .set({
+        content: generatedContent,
+        status: "complete",
+        updatedAt: new Date()
+      })
+      .where(eq(documentsTable.id, documentId))
+      .returning({ id: documentsTable.id })
+
+    if (!updatedDocument) {
+      await db
+        .update(documentsTable)
+        .set({ status: "failed" })
+        .where(eq(documentsTable.id, documentId))
+      return { isSuccess: false, message: "Failed to update document content." }
+    }
+
+    // 3. Delete the original idea (optional, but good for cleanup)
+    // We are not deleting the idea anymore to keep it for user's reference
+    // await db.delete(ideasTable).where(eq(ideasTable.id, ideaId));
+
+    return {
+      isSuccess: true,
+      message: "Document content generated successfully",
+      data: { documentId: updatedDocument.id }
+    }
+  } catch (error) {
+    console.error("Error generating document content from idea:", error)
+    // Set status to failed on error
+    await db
+      .update(documentsTable)
+      .set({ status: "failed" })
+      .where(eq(documentsTable.id, documentId))
+    return {
+      isSuccess: false,
+      message: "Failed to generate document content."
+    }
+  }
+}
 
 // ============================================================================
 // 5B.5 SOCIAL SNIPPET GENERATOR
@@ -1269,5 +1258,102 @@ Return a raw JSON object with this exact structure:
       isSuccess: false,
       message: "An unexpected error occurred during analysis."
     }
+  }
+}
+
+async function synthesizeCorpusAnalysis(
+  analysis: Awaited<
+    ReturnType<typeof analyzePastDocumentsAction>
+  >["data"]
+): Promise<ActionState<{ corpusSummary: string }>> {
+  if (!analysis || analysis.length === 0) {
+    return {
+      isSuccess: true,
+      message: "No documents to analyze.",
+      data: {
+        corpusSummary:
+          "The user has no documents yet. Please generate general ideas for a writer or content creator."
+      }
+    }
+  }
+
+  try {
+    // Prepare a summary of the documents for the synthesis prompt
+    const documentSummaries = analysis
+      .map(
+        doc =>
+          `Title: ${doc.title}\nThemes: ${doc.themes.join(", ")}\nTopics: ${doc.mainTopics.join(", ")}\n`
+      )
+      .join("\n---\n")
+
+    const prompt = `
+      Analyze the following collection of document summaries to identify overarching themes, topics, and content gaps.
+      Based on this analysis, provide a concise summary of the entire corpus. This summary will be used to generate new content ideas.
+
+      Document Summaries:
+      ${documentSummaries}
+
+      Synthesize this information into a brief "Corpus Summary" that captures the essence of the user's work and potential areas for new content.
+    `
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 500
+    })
+
+    const corpusSummary = response.choices[0]?.message?.content?.trim()
+    if (!corpusSummary) {
+      return { isSuccess: false, message: "Failed to synthesize corpus analysis." }
+    }
+
+    return {
+      isSuccess: true,
+      message: "Corpus analysis synthesized successfully.",
+      data: { corpusSummary }
+    }
+  } catch (error) {
+    console.error("Error synthesizing corpus analysis:", error)
+    return { isSuccess: false, message: "Failed to synthesize corpus analysis." }
+  }
+}
+
+export async function generateIdeasFromCorpusAction(
+  ideaType: "headlines" | "topics" | "outlines"
+): Promise<ActionState<GeneratedIdea[]>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  // 1. Analyze all past documents
+  const analysisResult = await analyzePastDocumentsAction(userId, "", 50)
+  if (!analysisResult.isSuccess) {
+    return { isSuccess: false, message: "Failed to analyze past documents." }
+  }
+
+  // 2. Synthesize the analysis into a corpus summary
+  const synthesisResult = await synthesizeCorpusAnalysis(analysisResult.data)
+  if (!synthesisResult.isSuccess) {
+    return { isSuccess: false, message: synthesisResult.message }
+  }
+  const { corpusSummary } = synthesisResult.data
+
+  // 3. Generate ideas based on the synthesized summary
+  const generationResult = await generateIdeasAction(
+    corpusSummary,
+    undefined,
+    ideaType
+  )
+
+  if (!generationResult.isSuccess) {
+    return { isSuccess: false, message: "Failed to generate ideas from corpus." }
+  }
+
+  return {
+    isSuccess: true,
+    message: "Ideas generated successfully from your documents!",
+    data: generationResult.data
   }
 } 

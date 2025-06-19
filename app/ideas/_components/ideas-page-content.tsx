@@ -16,7 +16,7 @@ import {
 import { toast } from "sonner"
 import { useUser } from "@clerk/nextjs"
 import {
-  generateIdeasAction,
+  generateIdeasFromCorpusAction,
   saveIdeaAction,
   convertIdeaToDocumentAction
 } from "@/actions/research-ideation-actions"
@@ -30,6 +30,7 @@ import { SelectIdea, IdeaStats, GeneratedIdea } from "@/types"
 export function IdeasPageContent() {
   const { user } = useUser()
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generationStatus, setGenerationStatus] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
 
   // Ideas states
@@ -82,15 +83,13 @@ export function IdeasPageContent() {
   const handleGenerateIdeas = async (
     type: "headlines" | "topics" | "outlines"
   ) => {
-    const sampleContent =
-      "Generate ideas for content creation, marketing strategies, and business development."
-
+    setGenerationStatus("Analyzing documents...")
     setIsGenerating(true)
     try {
-      const result = await generateIdeasAction(sampleContent, undefined, type)
+      const result = await generateIdeasFromCorpusAction(type)
       if (result.isSuccess) {
         setGeneratedIdeas(result.data)
-        toast.success(`Generated ${result.data.length} ${type}`)
+        toast.success(`Generated ${result.data.length} new ${type}!`)
       } else {
         toast.error(result.message)
       }
@@ -98,6 +97,7 @@ export function IdeasPageContent() {
       toast.error(`Failed to generate ${type}`)
     } finally {
       setIsGenerating(false)
+      setGenerationStatus("")
     }
   }
 
@@ -132,16 +132,16 @@ export function IdeasPageContent() {
 
   const handleConvertToDocument = async (idea: SelectIdea) => {
     try {
-      const result = await convertIdeaToDocumentAction(
-        idea.id,
-        idea.title,
-        idea.content,
-        idea.type
-      )
+      const result = await convertIdeaToDocumentAction(idea.id, idea.title)
       if (result.isSuccess) {
-        toast.success(result.message)
-        // Navigate to the new document
-        window.open(`/document/${result.data.documentId}`, "_blank")
+        const params = new URLSearchParams({
+          generating: "true",
+          ideaId: idea.id
+        })
+        window.open(
+          `/document/${result.data.documentId}?${params.toString()}`,
+          "_blank"
+        )
       } else {
         toast.error(result.message)
       }
@@ -208,7 +208,10 @@ export function IdeasPageContent() {
               className="h-20 flex-col gap-2"
             >
               {isGenerating ? (
-                <RefreshCw className="size-4 animate-spin" />
+                <>
+                  <RefreshCw className="size-4 animate-spin" />
+                  <span className="text-xs">{generationStatus}</span>
+                </>
               ) : (
                 <FileText className="size-4" />
               )}
@@ -221,7 +224,10 @@ export function IdeasPageContent() {
               className="h-20 flex-col gap-2"
             >
               {isGenerating ? (
-                <RefreshCw className="size-4 animate-spin" />
+                <>
+                  <RefreshCw className="size-4 animate-spin" />
+                  <span className="text-xs">{generationStatus}</span>
+                </>
               ) : (
                 <Lightbulb className="size-4" />
               )}
@@ -234,7 +240,10 @@ export function IdeasPageContent() {
               className="h-20 flex-col gap-2"
             >
               {isGenerating ? (
-                <RefreshCw className="size-4 animate-spin" />
+                <>
+                  <RefreshCw className="size-4 animate-spin" />
+                  <span className="text-xs">{generationStatus}</span>
+                </>
               ) : (
                 <FileText className="size-4" />
               )}

@@ -16,8 +16,9 @@ import { useRouter } from "next/navigation"
 import { createDocumentAction } from "@/actions/db/documents-actions"
 import { toast } from "sonner"
 import { useState } from "react"
+import { ReactNode } from "react"
 
-export function TopNav() {
+export function TopNav({ children }: { children?: ReactNode }) {
   const { user } = useUser()
   const { signOut } = useClerk()
   const router = useRouter()
@@ -77,6 +78,8 @@ export function TopNav() {
             <Plus className="mr-2 size-4" />
             {isCreating ? "Creating..." : "New Document"}
           </Button>
+
+          {children}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

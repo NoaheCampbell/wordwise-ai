@@ -85,6 +85,36 @@ export async function getIdeasAction(
   }
 }
 
+export async function getIdeaAction(
+  id: string
+): Promise<ActionState<SelectIdea>> {
+  try {
+    const { userId } = await auth()
+
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const [idea] = await db
+      .select()
+      .from(ideasTable)
+      .where(and(eq(ideasTable.id, id), eq(ideasTable.userId, userId)))
+
+    if (!idea) {
+      return { isSuccess: false, message: "Idea not found" }
+    }
+
+    return {
+      isSuccess: true,
+      message: "Idea retrieved successfully",
+      data: idea
+    }
+  } catch (error) {
+    console.error("Error getting idea:", error)
+    return { isSuccess: false, message: "Failed to get idea" }
+  }
+}
+
 export async function updateIdeaAction(
   id: string,
   data: Partial<InsertIdea>

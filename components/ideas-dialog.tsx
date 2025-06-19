@@ -177,29 +177,27 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
     if (!user) return
 
     setIsConverting(idea.id)
+
     try {
       const result = await convertIdeaToDocumentAction(
         idea.id,
-        idea.title || idea.content.slice(0, 50),
-        idea.content,
-        idea.type
+        idea.title || idea.content.slice(0, 50)
       )
 
       if (result.isSuccess) {
-        toast.success(
-          "Document created! Enhanced outline is being generated..."
-        )
-        setIsOpen(false) // Close dialog immediately
-        router.push(`/document/${result.data.documentId}`)
-        // Refresh ideas list in background since the idea will be deleted
-        loadIdeas()
+        setIsOpen(false)
+        const params = new URLSearchParams({
+          generating: "true",
+          ideaId: idea.id
+        })
+        router.push(`/document/${result.data.documentId}?${params.toString()}`)
       } else {
-        toast.error("Failed to convert idea")
+        toast.error("Failed to create document shell.")
+        setIsConverting(null)
       }
     } catch (error) {
       console.error("Error converting idea:", error)
-      toast.error("Failed to convert idea")
-    } finally {
+      toast.error("Failed to create document shell.")
       setIsConverting(null)
     }
   }
