@@ -2076,23 +2076,35 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             })
           }
 
-          // Add a temporary highlight effect
+          // Add subtle highlight effect to draw attention
           const highlightRect = range.getBoundingClientRect()
           if (highlightRect.width > 0 && highlightRect.height > 0) {
-            // Create a temporary highlight overlay
+            // Create a simple, subtle highlight overlay
             const overlay = window.document.createElement("div")
             overlay.style.position = "fixed"
-            overlay.style.left = highlightRect.left + "px"
-            overlay.style.top = highlightRect.top + "px"
-            overlay.style.width = highlightRect.width + "px"
-            overlay.style.height = highlightRect.height + "px"
-            overlay.style.backgroundColor = "rgba(59, 130, 246, 0.3)"
-            overlay.style.borderRadius = "4px"
+            overlay.style.left = highlightRect.left - 2 + "px"
+            overlay.style.top = highlightRect.top - 2 + "px"
+            overlay.style.width = highlightRect.width + 4 + "px"
+            overlay.style.height = highlightRect.height + 4 + "px"
+            overlay.style.backgroundColor = "rgba(59, 130, 246, 0.15)"
+            overlay.style.border = "2px solid rgba(59, 130, 246, 0.4)"
+            overlay.style.borderRadius = "6px"
             overlay.style.pointerEvents = "none"
             overlay.style.zIndex = "1000"
-            overlay.style.transition = "opacity 0.5s ease-out"
+            overlay.style.transition = "opacity 0.3s ease-out"
 
             window.document.body.appendChild(overlay)
+
+            // Brief flash effect - slightly brighter for 200ms then fade to normal
+            setTimeout(() => {
+              overlay.style.backgroundColor = "rgba(59, 130, 246, 0.25)"
+              overlay.style.borderColor = "rgba(59, 130, 246, 0.6)"
+            }, 50)
+
+            setTimeout(() => {
+              overlay.style.backgroundColor = "rgba(59, 130, 246, 0.15)"
+              overlay.style.borderColor = "rgba(59, 130, 246, 0.4)"
+            }, 250)
 
             // Remove the overlay after 2 seconds
             setTimeout(() => {
@@ -2101,8 +2113,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                 if (overlay.parentNode) {
                   overlay.parentNode.removeChild(overlay)
                 }
-              }, 500)
-            }, 1500)
+              }, 300)
+            }, 2000)
           }
 
           // Clear selection after a brief moment
