@@ -101,6 +101,18 @@ function enforceSentenceBoundary(originalText: string, selectedText: string): st
     const startIndex = originalText.indexOf(selectedText)
     if (startIndex !== -1) {
       const afterSelection = originalText.slice(startIndex + selectedText.length)
+      
+      // Use improved sentence detection to find the real end of the sentence
+      const sentences = splitIntoSentences(originalText.slice(startIndex))
+      if (sentences.length > 0) {
+        const firstSentence = sentences[0]
+        // Make sure we're not extending beyond what makes sense
+        if (firstSentence.length > selectedText.length && firstSentence.length < selectedText.length * 3) {
+          return firstSentence
+        }
+      }
+      
+      // Fallback to old behavior if new method doesn't work well
       const nextSentenceEnd = afterSelection.search(sentenceEnders)
       if (nextSentenceEnd !== -1) {
         return selectedText + afterSelection.slice(0, nextSentenceEnd + 1)
@@ -148,24 +160,161 @@ function validateRewriteText(text: string): { isValid: boolean; message?: string
   return { isValid: true }
 }
 
+interface SentenceInfo {
+  text: string
+  start: number
+  end: number
+}
+
+/**
+ * Improved sentence boundary detection that handles edge cases
+ * Returns both sentence text and position information
+ */
+function splitIntoSentencesWithPositions(text: string): SentenceInfo[] {
+  if (!text.trim()) return []
+
+  // Common abbreviations that shouldn't trigger sentence breaks
+  const abbreviations = new Set([
+    'Mr', 'Mrs', 'Ms', 'Dr', 'Prof', 'Sr', 'Jr', 'vs', 'etc', 'Inc', 'Ltd', 'Corp',
+    'Co', 'LLC', 'LLP', 'USA', 'UK', 'US', 'EU', 'CEO', 'CFO', 'CTO', 'VP', 'Gen',
+    'Lt', 'Col', 'Capt', 'Sgt', 'St', 'Ave', 'Blvd', 'Rd', 'Dept', 'Univ',
+    'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'a.m', 'p.m', 'AM', 'PM',
+    'i.e', 'e.g', 'cf', 'al', 'No', 'vol', 'pp', 'ed', 'eds'
+  ])
+
+  const sentences: SentenceInfo[] = []
+  let currentSentenceStart = 0
+  let currentSentence = ''
+  let i = 0
+
+  while (i < text.length) {
+    const char = text[i]
+    currentSentence += char
+
+    // Check for sentence-ending punctuation
+    if (char === '.' || char === '!' || char === '?') {
+      // Look ahead to see what comes next
+      const nextChar = i + 1 < text.length ? text[i + 1] : ''
+      const prevChar = i > 0 ? text[i - 1] : ''
+      
+      // Handle decimal numbers (digit.digit)
+      if (char === '.' && /\d/.test(prevChar) && /\d/.test(nextChar)) {
+        i++
+        continue
+      }
+
+      // Handle file extensions and URLs (word.word with no space after)
+      if (char === '.' && /[a-zA-Z]/.test(prevChar) && /[a-zA-Z]/.test(nextChar)) {
+        i++
+        continue
+      }
+
+      // Handle abbreviations
+      if (char === '.') {
+        // Extract the word before the period
+        let wordStart = i - 1
+        while (wordStart >= 0 && /[a-zA-Z]/.test(text[wordStart])) {
+          wordStart--
+        }
+        const word = text.slice(wordStart + 1, i)
+        
+        if (abbreviations.has(word)) {
+          // Check if next character is lowercase (likely continuation)
+          if (/[a-z]/.test(nextChar)) {
+            i++
+            continue
+          }
+        }
+      }
+
+      // Check if this looks like a real sentence ending
+      if (nextChar === '' || /\s/.test(nextChar)) {
+        // Look ahead to see if next non-whitespace character is uppercase or number
+        let nextNonSpace = i + 1
+        while (nextNonSpace < text.length && /\s/.test(text[nextNonSpace])) {
+          nextNonSpace++
+        }
+        
+        const nextNonSpaceChar = nextNonSpace < text.length ? text[nextNonSpace] : ''
+        
+        // If next non-space character is uppercase, number, or we're at end, this is likely a sentence break
+        if (nextNonSpaceChar === '' || /[A-Z0-9]/.test(nextNonSpaceChar)) {
+          const trimmedSentence = currentSentence.trim()
+          if (trimmedSentence) {
+            // Find the actual start of the trimmed sentence
+            const trimStart = currentSentence.indexOf(trimmedSentence)
+            sentences.push({
+              text: trimmedSentence,
+              start: currentSentenceStart + trimStart,
+              end: currentSentenceStart + trimStart + trimmedSentence.length
+            })
+          }
+          
+          // Skip to next non-whitespace character to start next sentence
+          let nextStart = i + 1
+          while (nextStart < text.length && /\s/.test(text[nextStart])) {
+            nextStart++
+          }
+          currentSentenceStart = nextStart
+          currentSentence = ''
+        }
+      }
+    }
+    
+    i++
+  }
+
+  // Add any remaining text as the final sentence
+  const trimmedSentence = currentSentence.trim()
+  if (trimmedSentence) {
+    const trimStart = currentSentence.indexOf(trimmedSentence)
+    sentences.push({
+      text: trimmedSentence,
+      start: currentSentenceStart + trimStart,
+      end: currentSentenceStart + trimStart + trimmedSentence.length
+    })
+  }
+
+  // If no sentences were found, return the original text as one sentence
+  return sentences.length > 0 ? sentences : [{
+    text: text.trim(),
+    start: 0,
+    end: text.trim().length
+  }]
+}
+
+/**
+ * Improved sentence boundary detection that handles edge cases
+ * Backward compatibility function that returns just the text
+ */
+function splitIntoSentences(text: string): string[] {
+  return splitIntoSentencesWithPositions(text).map(s => s.text)
+}
+
 /**
  * Truncate text at sentence boundaries to respect token limits
  */
 function truncateAtSentenceBoundary(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   
-  const truncated = text.slice(0, maxLength)
-  const lastSentenceEnd = Math.max(
-    truncated.lastIndexOf('.'),
-    truncated.lastIndexOf('!'),
-    truncated.lastIndexOf('?')
-  )
+  const sentences = splitIntoSentences(text)
+  let result = ''
   
-  if (lastSentenceEnd > maxLength * 0.5) {
-    return truncated.slice(0, lastSentenceEnd + 1)
+  for (const sentence of sentences) {
+    if (result.length + sentence.length + 1 <= maxLength) {
+      result += (result ? ' ' : '') + sentence
+    } else {
+      break
+    }
   }
   
-  return truncated
+  // If we couldn't fit any complete sentences, truncate the first sentence
+  if (!result && sentences.length > 0) {
+    result = sentences[0].slice(0, maxLength)
+  }
+  
+  return result || text.slice(0, maxLength)
 }
 
 
@@ -443,25 +592,21 @@ export async function analyzeTextInParallelAction(
       return { isSuccess: false, message: "No text provided" }
     }
 
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
-    let offset = 0
+    // Use improved sentence splitting that handles decimal numbers, abbreviations, etc.
+    const sentencesWithPositions = splitIntoSentencesWithPositions(text)
     
-    const analysisPromises = sentences.map(sentence => {
-      const sentenceOffset = offset
-      const trimmedSentence = sentence.trim()
-      const trimOffset = sentence.indexOf(trimmedSentence)
-      offset += sentence.length
-
+    const analysisPromises = sentencesWithPositions.map(sentenceInfo => {
       return analyzeTextAction(
-        { text: trimmedSentence, analysisTypes },
+        { text: sentenceInfo.text, analysisTypes },
         documentId,
         saveSuggestions
       ).then(result => {
         if (result.isSuccess && result.data) {
           result.data.overallSuggestions.forEach(suggestion => {
             if (suggestion.span) {
-              suggestion.span.start += sentenceOffset + trimOffset
-              suggestion.span.end += sentenceOffset + trimOffset
+              // Adjust suggestion positions based on sentence position in original text
+              suggestion.span.start += sentenceInfo.start
+              suggestion.span.end += sentenceInfo.start
             }
           })
           return result.data.overallSuggestions
