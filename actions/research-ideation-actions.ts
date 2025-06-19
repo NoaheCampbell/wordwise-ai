@@ -165,7 +165,7 @@ export async function findRelevantArticlesAction(
       domainInstructions += ` Avoid results from these domains: ${disallowedDomains.join(", ")}.`
     }
 
-    const searchPrompt = `Find 5-7 high-quality, relevant articles about: ${searchQuery}${domainInstructions}
+    const searchPrompt = `Find 5 high-quality, relevant articles about: ${searchQuery}${domainInstructions}
 
 For each article found, provide:
 1. The article title
@@ -193,13 +193,18 @@ Focus on recent, authoritative sources that would be valuable for research and c
       } else if (item.type === "message" && item.role === "assistant") {
         // Handle both ResponseOutputText and ResponseOutputRefusal
         const textContent = item.content?.[0]
-        if (textContent && 'text' in textContent) {
+        if (textContent && "text" in textContent) {
           assistantMessage = textContent.text || ""
           
           // Extract URLs from citations if available
-          const annotations = 'annotations' in textContent ? textContent.annotations || [] : []
+          const annotations =
+            "annotations" in textContent ? textContent.annotations || [] : []
+          console.log(
+            `Found ${annotations.length} annotations from OpenAI web search.`
+          )
           searchResults = annotations
             .filter((annotation: any) => annotation.type === "url_citation")
+            .slice(0, 5)
             .map((annotation: any) => ({
               title: annotation.title,
               url: annotation.url,
@@ -215,8 +220,8 @@ Focus on recent, authoritative sources that would be valuable for research and c
       // This is a simple regex approach to find URLs and titles
       const urlRegex = /\[([^\]]+)\]\(([^)]+)\)/g
       const matches = [...assistantMessage.matchAll(urlRegex)]
-      
-      searchResults = matches.slice(0, 7).map((match, index) => ({
+
+      searchResults = matches.slice(0, 5).map((match, index) => ({
         title: match[1],
         url: match[2],
         summary: `Article found from web search results`
@@ -231,7 +236,7 @@ Focus on recent, authoritative sources that would be valuable for research and c
     }
 
     const externalSources: ExternalSource[] = searchResults
-      .slice(0, 7)
+      .slice(0, 5)
       .map((source: any, index: number) => ({
         title: source.title,
         url: source.url,
@@ -830,43 +835,38 @@ export async function generateDocumentFromIdeaAction(
   }
 }
 
-async function generateSectionContent(
-  section: "introduction" | "body" | "conclusion",
+async function generateFullDocumentContent(
   ideaTitle: string,
   ideaContent: string,
-  sources: ArticleSource[],
-  existingContent: string = ""
+  sources: ArticleSource[]
 ): Promise<string> {
-  let prompt = `You are an expert writer. Write the **${section}** of a comprehensive document.
+  let prompt = `You are an expert writer. Write a comprehensive, well-structured, and engaging document.
 Base the content on the provided idea and research articles.
-The section should be well-structured, informative, and engaging.
-Cite articles using markdown links: [Source 1](https://example.com).
+The document should have a clear introduction, body, and conclusion.
+Cite articles using markdown links where appropriate: [Source 1](https://example.com).
 
 **Idea Title:** ${ideaTitle}
 **Idea Details:** ${ideaContent}`
 
   if (sources.length > 0) {
-    prompt += `\n\n**Research Articles:**
+    prompt += `\n\n**Research Articles (use these for content and citations):**
 ${sources
   .map(
     (article, index) =>
-      `${index + 1}. ${article.title} - ${article.summary}\nURL: ${article.url}`
+      `${index + 1}. ${article.title} - ${article.summary}\nURL: ${
+        article.url
+      }`
   )
   .join("\n\n")}`
   }
 
-  if (existingContent) {
-    prompt += `\n\n**Existing Content (for context, do not repeat):**
-${existingContent.slice(-1000)}` // Provide last 1000 chars for context
-  }
-
-  prompt += `\n\nGenerate the content for the **${section}** section now.`
+  prompt += `\n\nGenerate the full document content now.`
 
   const contentResponse = await openai.chat.completions.create({
     model: "gpt-4o",
     messages: [{ role: "user", content: prompt }],
     temperature: 0.7,
-    max_tokens: 1500
+    max_tokens: 3000 // Increased max tokens for a full document
   })
 
   return contentResponse.choices[0]?.message?.content || ""
@@ -883,6 +883,11 @@ export async function writeFullDocumentAction(
 ) {
   try {
     // 1. Find relevant articles
+    await db
+      .update(documentsTable)
+      .set({ status: "finding_sources" })
+      .where(eq(documentsTable.id, documentId))
+
     const keywordPrompt = `Extract 5-7 relevant keywords for a web search from the following. Return as a JSON object: {"keywords": ["keyword1"]}.\n\nTitle: ${ideaTitle}\nContent: ${ideaContent}`
     const keywordResponse = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -895,57 +900,21 @@ export async function writeFullDocumentAction(
     const keywords = responseJson.keywords || []
     const articlesResult = await findRelevantArticlesAction(keywords, documentId)
     const sources = articlesResult.isSuccess ? articlesResult.data : []
+    console.log(`Found ${sources.length} sources to generate document.`)
 
-    let fullContent = ""
-
-    // 2. Write Introduction
+    // 2. Write Full Document in one go
     await db
       .update(documentsTable)
-      .set({ status: "writing_introduction" })
+      .set({ status: "writing_body" }) // A single "writing" status is enough now
       .where(eq(documentsTable.id, documentId))
-    const introContent = await generateSectionContent(
-      "introduction",
+
+    const fullContent = await generateFullDocumentContent(
       ideaTitle,
       ideaContent,
       sources
     )
-    fullContent += introContent + "\n\n"
-    await db
-      .update(documentsTable)
-      .set({ content: fullContent })
-      .where(eq(documentsTable.id, documentId))
 
-    // 3. Write Body
-    await db
-      .update(documentsTable)
-      .set({ status: "writing_body" })
-      .where(eq(documentsTable.id, documentId))
-    const bodyContent = await generateSectionContent(
-      "body",
-      ideaTitle,
-      ideaContent,
-      sources,
-      fullContent
-    )
-    fullContent += bodyContent + "\n\n"
-    await db
-      .update(documentsTable)
-      .set({ content: fullContent })
-      .where(eq(documentsTable.id, documentId))
-
-    // 4. Write Conclusion
-    await db
-      .update(documentsTable)
-      .set({ status: "writing_conclusion" })
-      .where(eq(documentsTable.id, documentId))
-    const conclusionContent = await generateSectionContent(
-      "conclusion",
-      ideaTitle,
-      ideaContent,
-      sources,
-      fullContent
-    )
-    fullContent += conclusionContent
+    // 3. Update document with content and set status to complete
     await db
       .update(documentsTable)
       .set({ content: fullContent, status: "complete" })

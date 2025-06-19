@@ -64,6 +64,7 @@ export default function DocumentPage() {
 
   const [generationStatus, setGenerationStatus] = useState<string | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const generationTriggered = useRef(false)
 
   const loadDocument = useCallback(async () => {
     if (!user) return
@@ -96,7 +97,8 @@ export default function DocumentPage() {
     const isGeneratingParam = searchParams.get("generating") === "true"
     const ideaId = searchParams.get("ideaId")
 
-    if (isGeneratingParam && ideaId && user) {
+    if (isGeneratingParam && ideaId && user && !generationTriggered.current) {
+      generationTriggered.current = true
       getIdeaAction(ideaId).then(ideaResult => {
         if (ideaResult.isSuccess) {
           const idea = ideaResult.data
