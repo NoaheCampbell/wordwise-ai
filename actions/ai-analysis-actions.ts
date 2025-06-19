@@ -6,7 +6,7 @@ import { db } from "@/db/db"
 import { documentsTable } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
-import readability from "text-readability-ts"
+
 import { createSuggestionAction } from "@/actions/db/suggestions-actions"
 import { getTemplate, populateTemplate } from "@/prompts/ai-prompt-templates"
 import crypto from "crypto"
@@ -101,6 +101,18 @@ function enforceSentenceBoundary(originalText: string, selectedText: string): st
     const startIndex = originalText.indexOf(selectedText)
     if (startIndex !== -1) {
       const afterSelection = originalText.slice(startIndex + selectedText.length)
+      
+      // Use improved sentence detection to find the real end of the sentence
+      const sentences = splitIntoSentences(originalText.slice(startIndex))
+      if (sentences.length > 0) {
+        const firstSentence = sentences[0]
+        // Make sure we're not extending beyond what makes sense
+        if (firstSentence.length > selectedText.length && firstSentence.length < selectedText.length * 3) {
+          return firstSentence
+        }
+      }
+      
+      // Fallback to old behavior if new method doesn't work well
       const nextSentenceEnd = afterSelection.search(sentenceEnders)
       if (nextSentenceEnd !== -1) {
         return selectedText + afterSelection.slice(0, nextSentenceEnd + 1)
@@ -148,24 +160,161 @@ function validateRewriteText(text: string): { isValid: boolean; message?: string
   return { isValid: true }
 }
 
+interface SentenceInfo {
+  text: string
+  start: number
+  end: number
+}
+
+/**
+ * Improved sentence boundary detection that handles edge cases
+ * Returns both sentence text and position information
+ */
+function splitIntoSentencesWithPositions(text: string): SentenceInfo[] {
+  if (!text.trim()) return []
+
+  // Common abbreviations that shouldn't trigger sentence breaks
+  const abbreviations = new Set([
+    'Mr', 'Mrs', 'Ms', 'Dr', 'Prof', 'Sr', 'Jr', 'vs', 'etc', 'Inc', 'Ltd', 'Corp',
+    'Co', 'LLC', 'LLP', 'USA', 'UK', 'US', 'EU', 'CEO', 'CFO', 'CTO', 'VP', 'Gen',
+    'Lt', 'Col', 'Capt', 'Sgt', 'St', 'Ave', 'Blvd', 'Rd', 'Dept', 'Univ',
+    'Jan', 'Feb', 'Mar', 'Apr', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'a.m', 'p.m', 'AM', 'PM',
+    'i.e', 'e.g', 'cf', 'al', 'No', 'vol', 'pp', 'ed', 'eds'
+  ])
+
+  const sentences: SentenceInfo[] = []
+  let currentSentenceStart = 0
+  let currentSentence = ''
+  let i = 0
+
+  while (i < text.length) {
+    const char = text[i]
+    currentSentence += char
+
+    // Check for sentence-ending punctuation
+    if (char === '.' || char === '!' || char === '?') {
+      // Look ahead to see what comes next
+      const nextChar = i + 1 < text.length ? text[i + 1] : ''
+      const prevChar = i > 0 ? text[i - 1] : ''
+      
+      // Handle decimal numbers (digit.digit)
+      if (char === '.' && /\d/.test(prevChar) && /\d/.test(nextChar)) {
+        i++
+        continue
+      }
+
+      // Handle file extensions and URLs (word.word with no space after)
+      if (char === '.' && /[a-zA-Z]/.test(prevChar) && /[a-zA-Z]/.test(nextChar)) {
+        i++
+        continue
+      }
+
+      // Handle abbreviations
+      if (char === '.') {
+        // Extract the word before the period
+        let wordStart = i - 1
+        while (wordStart >= 0 && /[a-zA-Z]/.test(text[wordStart])) {
+          wordStart--
+        }
+        const word = text.slice(wordStart + 1, i)
+        
+        if (abbreviations.has(word)) {
+          // Check if next character is lowercase (likely continuation)
+          if (/[a-z]/.test(nextChar)) {
+            i++
+            continue
+          }
+        }
+      }
+
+      // Check if this looks like a real sentence ending
+      if (nextChar === '' || /\s/.test(nextChar)) {
+        // Look ahead to see if next non-whitespace character is uppercase or number
+        let nextNonSpace = i + 1
+        while (nextNonSpace < text.length && /\s/.test(text[nextNonSpace])) {
+          nextNonSpace++
+        }
+        
+        const nextNonSpaceChar = nextNonSpace < text.length ? text[nextNonSpace] : ''
+        
+        // If next non-space character is uppercase, number, or we're at end, this is likely a sentence break
+        if (nextNonSpaceChar === '' || /[A-Z0-9]/.test(nextNonSpaceChar)) {
+          const trimmedSentence = currentSentence.trim()
+          if (trimmedSentence) {
+            // Find the actual start of the trimmed sentence
+            const trimStart = currentSentence.indexOf(trimmedSentence)
+            sentences.push({
+              text: trimmedSentence,
+              start: currentSentenceStart + trimStart,
+              end: currentSentenceStart + trimStart + trimmedSentence.length
+            })
+          }
+          
+          // Skip to next non-whitespace character to start next sentence
+          let nextStart = i + 1
+          while (nextStart < text.length && /\s/.test(text[nextStart])) {
+            nextStart++
+          }
+          currentSentenceStart = nextStart
+          currentSentence = ''
+        }
+      }
+    }
+    
+    i++
+  }
+
+  // Add any remaining text as the final sentence
+  const trimmedSentence = currentSentence.trim()
+  if (trimmedSentence) {
+    const trimStart = currentSentence.indexOf(trimmedSentence)
+    sentences.push({
+      text: trimmedSentence,
+      start: currentSentenceStart + trimStart,
+      end: currentSentenceStart + trimStart + trimmedSentence.length
+    })
+  }
+
+  // If no sentences were found, return the original text as one sentence
+  return sentences.length > 0 ? sentences : [{
+    text: text.trim(),
+    start: 0,
+    end: text.trim().length
+  }]
+}
+
+/**
+ * Improved sentence boundary detection that handles edge cases
+ * Backward compatibility function that returns just the text
+ */
+function splitIntoSentences(text: string): string[] {
+  return splitIntoSentencesWithPositions(text).map(s => s.text)
+}
+
 /**
  * Truncate text at sentence boundaries to respect token limits
  */
 function truncateAtSentenceBoundary(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text
   
-  const truncated = text.slice(0, maxLength)
-  const lastSentenceEnd = Math.max(
-    truncated.lastIndexOf('.'),
-    truncated.lastIndexOf('!'),
-    truncated.lastIndexOf('?')
-  )
+  const sentences = splitIntoSentences(text)
+  let result = ''
   
-  if (lastSentenceEnd > maxLength * 0.5) {
-    return truncated.slice(0, lastSentenceEnd + 1)
+  for (const sentence of sentences) {
+    if (result.length + sentence.length + 1 <= maxLength) {
+      result += (result ? ' ' : '') + sentence
+    } else {
+      break
+    }
   }
   
-  return truncated
+  // If we couldn't fit any complete sentences, truncate the first sentence
+  if (!result && sentences.length > 0) {
+    result = sentences[0].slice(0, maxLength)
+  }
+  
+  return result || text.slice(0, maxLength)
 }
 
 
@@ -203,7 +352,6 @@ function findTextSpan(fullText: string, searchText: string, usedPositions: Set<n
       
       contextSearchFrom = contextIndex + 1
     }
-    console.log('Context-based search failed, falling back to direct search')
   }
 
   // Second attempt: Direct search with word boundaries
@@ -444,25 +592,21 @@ export async function analyzeTextInParallelAction(
       return { isSuccess: false, message: "No text provided" }
     }
 
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
-    let offset = 0
+    // Use improved sentence splitting that handles decimal numbers, abbreviations, etc.
+    const sentencesWithPositions = splitIntoSentencesWithPositions(text)
     
-    const analysisPromises = sentences.map(sentence => {
-      const sentenceOffset = offset
-      const trimmedSentence = sentence.trim()
-      const trimOffset = sentence.indexOf(trimmedSentence)
-      offset += sentence.length
-
+    const analysisPromises = sentencesWithPositions.map(sentenceInfo => {
       return analyzeTextAction(
-        { text: trimmedSentence, analysisTypes },
+        { text: sentenceInfo.text, analysisTypes },
         documentId,
         saveSuggestions
       ).then(result => {
         if (result.isSuccess && result.data) {
           result.data.overallSuggestions.forEach(suggestion => {
             if (suggestion.span) {
-              suggestion.span.start += sentenceOffset + trimOffset
-              suggestion.span.end += sentenceOffset + trimOffset
+              // Adjust suggestion positions based on sentence position in original text
+              suggestion.span.start += sentenceInfo.start
+              suggestion.span.end += sentenceInfo.start
             }
           })
           return result.data.overallSuggestions
@@ -757,18 +901,145 @@ export async function clearAICacheAction(userId?: string): Promise<ActionState<v
 }
 
 export async function calculateClarityScoreForTextAction(
-  text: string
-): Promise<ActionState<number | null>> {
+  text: string,
+  documentId?: string
+): Promise<ActionState<{ score: number; explanation: string; highlights: string[] } | null>> {
   if (!text.trim()) {
     return { isSuccess: true, message: "No text to score", data: null }
   }
+
+  // Check minimum word count (25 words as per guidelines)
+  const wordCount = text.trim().split(/\s+/).filter(word => word.length > 0).length
+  if (wordCount < 25) {
+    return { 
+      isSuccess: true, 
+      message: "Need more text to score", 
+      data: null 
+    }
+  }
+
   try {
-    const score = readability.fleschReadingEase(text)
-    const adjustedScore = Math.min(100, Math.max(0, score))
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Truncate to paragraph size (≤1200 chars) as per guidelines
+    const excerpt = text.length > 1200 ? text.slice(0, 1200) + "..." : text
+    
+    // Generate hash for caching
+    const textHash = crypto.createHash("sha256").update(excerpt.trim()).digest("hex")
+
+    // Check cache first (with fallback if table doesn't exist)
+    try {
+      const { getCachedClarityScoreAction } = await import("@/actions/db/clarity-scores-actions")
+      const cachedResult = await getCachedClarityScoreAction(textHash, userId)
+      
+      if (cachedResult.isSuccess && cachedResult.data) {
+        return {
+          isSuccess: true,
+          message: "Clarity score retrieved from cache",
+          data: {
+            score: cachedResult.data.clarityScore!,
+            explanation: cachedResult.data.clarityExplanation!,
+            highlights: cachedResult.data.clarityHighlights || []
+          }
+        }
+      }
+    } catch (error) {
+      // Continue to AI analysis without cache
+    }
+
+    // No cache hit, call GPT-4o
+    if (!process.env.OPENAI_API_KEY) {
+      return { isSuccess: false, message: "OpenAI API key not configured" }
+    }
+
+    // Check rate limits
+    if (userId && !checkRateLimit(userId)) {
+      return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
+    }
+
+    const rubric = `90-100  Crystal clear – concise, no ambiguity, smooth flow.
+75-89   Quite clear – minor verbosity or jargon.
+60-74   Mixed clarity – several long/complex sentences, vague phrases.
+40-59   Hard to follow – frequent wordiness, passive overload, shifting focus.
+0-39    Very unclear – dense, confusing, or poorly structured.`
+
+    const prompt = `You are a writing coach. Evaluate the clarity of the following passage for an educated, non-specialist audience.
+
+TASKS
+1. Give a clarity score from 0-100 using the rubric below.
+2. Briefly explain the main reasons for the score (≤ 40 words).
+3. List up to 3 sentences or phrases that reduce clarity.
+
+RUBRIC
+${rubric}
+
+TEXT
+<<< ${excerpt} >>>
+
+Respond with valid JSON only:
+{
+  "score": [number 0-100],
+  "explanation": "[brief explanation ≤40 words]",
+  "highlights": ["phrase1", "phrase2", "phrase3"]
+}`
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 250
+    })
+
+    const content = response.choices[0]?.message?.content?.trim()
+    if (!content) {
+      return { isSuccess: false, message: "No response from AI" }
+    }
+
+    let parsed: { score: number; explanation: string; highlights: string[] }
+    try {
+      // Clean the response by removing markdown code blocks if present
+      let cleanContent = content.trim()
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      }
+      
+      parsed = JSON.parse(cleanContent)
+    } catch (parseError) {
+      console.error("Failed to parse clarity score JSON:", content)
+      return { isSuccess: false, message: "Invalid response format from AI" }
+    }
+
+    // Validate response
+    if (typeof parsed.score !== 'number' || parsed.score < 0 || parsed.score > 100) {
+      return { isSuccess: false, message: "Invalid score from AI" }
+    }
+
+    // Save to cache (with fallback if table doesn't exist)
+    try {
+      const { saveClarityScoreToDocumentAction } = await import("@/actions/db/clarity-scores-actions")
+      await saveClarityScoreToDocumentAction(documentId || "temp-id", {
+        score: Math.round(parsed.score),
+        explanation: parsed.explanation || "",
+        highlights: parsed.highlights || [],
+        textHash
+      })
+    } catch (error) {
+      // Continue without saving to cache
+    }
+
     return {
       isSuccess: true,
       message: "Clarity score calculated",
-      data: Math.round(adjustedScore)
+      data: {
+        score: Math.round(parsed.score),
+        explanation: parsed.explanation || "",
+        highlights: parsed.highlights || []
+      }
     }
   } catch (error) {
     console.error("Error calculating clarity score:", error)
@@ -785,33 +1056,28 @@ export async function getAverageClarityScoreAction(): Promise<
   }
 
   try {
-    const userDocuments = await db
-      .select({ content: documentsTable.content })
-      .from(documentsTable)
-      .where(eq(documentsTable.userId, userId))
-
-    if (userDocuments.length === 0) {
-      return { isSuccess: true, message: "No documents to analyze", data: null }
+    // Get the latest clarity score for the user (with fallback if table doesn't exist)
+    try {
+      const { getLatestClarityScoreForUserAction } = await import("@/actions/db/clarity-scores-actions")
+      const latestResult = await getLatestClarityScoreForUserAction()
+      
+      if (latestResult.isSuccess && latestResult.data) {
+        return {
+          isSuccess: true,
+          message: "Latest clarity score retrieved",
+          data: latestResult.data.score
+        }
+      }
+    } catch (error) {
     }
 
-    const allText = userDocuments.map((doc) => doc.content || "").join("\n\n")
-    if (!allText.trim()) {
-      return { isSuccess: true, message: "No content to analyze", data: null }
-    }
-
-    const score = readability.fleschReadingEase(allText)
-    const adjustedScore = Math.min(100, Math.max(0, score))
-    
-    return {
-      isSuccess: true,
-      message: "Average clarity score calculated",
-      data: Math.round(adjustedScore)
-    }
+    // Fallback: No clarity scores exist or table not ready, return null
+    return { isSuccess: true, message: "No clarity scores available", data: null }
   } catch (error) {
-    console.error("Error calculating average clarity score:", error)
+    console.error("Error getting average clarity score:", error)
     return {
       isSuccess: false,
-      message: "Failed to calculate average score",
+      message: "Failed to get average score",
     }
   }
 }

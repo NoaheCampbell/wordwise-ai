@@ -245,11 +245,18 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="h-[90vh] w-[95vw] max-w-6xl p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Lightbulb className="size-5 text-amber-600" />
-            Ideas Hub
+      <DialogContent className="h-[90vh] w-[95vw] max-w-6xl rounded-xl bg-white p-0 shadow-2xl">
+        <DialogHeader className="border-b border-gray-100 p-6">
+          <DialogTitle className="flex items-center gap-3">
+            <div className="flex size-12 items-center justify-center rounded-full bg-amber-100">
+              <Lightbulb className="size-6 text-amber-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Ideas Hub</h2>
+              <p className="text-sm text-gray-600">
+                Manage and explore your creative ideas
+              </p>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
@@ -257,96 +264,102 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
           <div className="flex h-full flex-col gap-4">
             {/* Stats Cards */}
             <div className="grid grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-amber-100">
                     <Lightbulb className="size-4 text-amber-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
                     Total Ideas
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.totalIdeas}</div>
-                </CardContent>
-              </Card>
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.totalIdeas}
+                </div>
+              </div>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-blue-100">
                     <Calendar className="size-4 text-blue-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
                     This Week
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{stats.recentIdeas}</div>
-                </CardContent>
-              </Card>
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.recentIdeas}
+                </div>
+              </div>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-green-100">
                     <Target className="size-4 text-green-600" />
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">
                     Top Category
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-sm font-medium capitalize">
-                    {stats.topTopics[0]?.topic || "None"}
-                  </div>
-                  <div className="text-muted-foreground text-xs">
-                    {stats.topTopics[0]?.count || 0} ideas
-                  </div>
-                </CardContent>
-              </Card>
+                  </span>
+                </div>
+                <div className="text-sm font-semibold capitalize text-gray-900">
+                  {stats.topTopics[0]?.topic || "None"}
+                </div>
+                <div className="text-xs text-gray-600">
+                  {stats.topTopics[0]?.count || 0} ideas
+                </div>
+              </div>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex size-8 items-center justify-center rounded-full bg-purple-100">
                     <Sparkles className="size-4 text-purple-600" />
-                    Categories
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    {stats.topTopics.length}
                   </div>
-                </CardContent>
-              </Card>
+                  <span className="text-sm font-semibold text-gray-900">
+                    Categories
+                  </span>
+                </div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {stats.topTopics.length}
+                </div>
+              </div>
             </div>
 
             {/* Filters */}
-            <div className="flex items-center gap-4">
-              <div className="relative flex-1">
-                <Search className="text-muted-foreground absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-                <Input
-                  placeholder="Search ideas..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex items-center gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                  <Input
+                    placeholder="Search ideas..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="border-gray-300 bg-white pl-10"
+                  />
+                </div>
+
+                <Select value={selectedType} onValueChange={setSelectedType}>
+                  <SelectTrigger className="w-40 border-gray-300 bg-white">
+                    <SelectValue placeholder="Filter by type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="headline">Headlines</SelectItem>
+                    <SelectItem value="topic">Topics</SelectItem>
+                    <SelectItem value="outline">Outlines</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-40 border-gray-300 bg-white">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
+                    <SelectItem value="alphabetical">Alphabetical</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-
-              <Select value={selectedType} onValueChange={setSelectedType}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="headline">Headlines</SelectItem>
-                  <SelectItem value="topic">Topics</SelectItem>
-                  <SelectItem value="outline">Outlines</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest First</SelectItem>
-                  <SelectItem value="oldest">Oldest First</SelectItem>
-                  <SelectItem value="alphabetical">Alphabetical</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Ideas Grid */}
@@ -354,16 +367,20 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
               {isLoading ? (
                 <div className="flex h-64 items-center justify-center">
                   <div className="text-center">
-                    <div className="border-primary mx-auto mb-4 size-8 animate-spin rounded-full border-b-2"></div>
-                    <p className="text-muted-foreground">Loading ideas...</p>
+                    <div className="mx-auto mb-4 size-8 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    <p className="text-gray-600">Loading ideas...</p>
                   </div>
                 </div>
               ) : filteredIdeas.length === 0 ? (
                 <div className="flex h-64 items-center justify-center">
                   <div className="text-center">
-                    <Lightbulb className="text-muted-foreground mx-auto mb-4 size-12" />
-                    <h3 className="mb-2 text-lg font-medium">No Ideas Yet</h3>
-                    <p className="text-muted-foreground mb-4">
+                    <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-gray-100">
+                      <Lightbulb className="size-8 text-gray-400" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-semibold text-gray-900">
+                      No Ideas Yet
+                    </h3>
+                    <p className="mb-4 text-gray-600">
                       {searchQuery || selectedType !== "all"
                         ? "No ideas match your current filters."
                         : "Generate some ideas to get started!"}
@@ -373,60 +390,62 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
               ) : (
                 <div className="grid grid-cols-1 gap-4 pb-4 md:grid-cols-2 lg:grid-cols-3">
                   {filteredIdeas.map(idea => (
-                    <Card
+                    <div
                       key={idea.id}
-                      className="transition-shadow hover:shadow-md"
+                      className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-gray-300 hover:shadow-md"
                     >
-                      <CardHeader className="pb-3">
+                      <div className="mb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
-                            {getIdeaIcon(idea.type)}
+                            <div className="flex size-6 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+                              {getIdeaIcon(idea.type)}
+                            </div>
                             <Badge
-                              variant="secondary"
-                              className="text-xs capitalize"
+                              variant="outline"
+                              className="border-gray-300 bg-gray-50 text-xs capitalize text-gray-700"
                             >
                               {idea.type}
                             </Badge>
                           </div>
-                          <div className="text-muted-foreground text-xs">
+                          <div className="text-xs text-gray-500">
                             {formatDate(idea.createdAt.toString())}
                           </div>
                         </div>
                         {idea.title && (
-                          <CardTitle className="line-clamp-2 text-sm font-medium">
+                          <h3 className="mt-2 line-clamp-2 text-sm font-semibold text-gray-900">
                             {idea.title}
-                          </CardTitle>
+                          </h3>
                         )}
-                      </CardHeader>
-                      <CardContent className="pt-0">
-                        <p className="text-muted-foreground mb-4 line-clamp-3 text-sm">
-                          {idea.content}
-                        </p>
+                      </div>
 
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => handleConvertToDocument(idea)}
-                            disabled={isConverting === idea.id}
-                            className="flex-1"
-                          >
-                            {isConverting === idea.id ? (
-                              <div className="mr-1 size-3 animate-spin rounded-full border-b-2 border-white" />
-                            ) : (
-                              <ExternalLink className="mr-1 size-3" />
-                            )}
-                            Create Doc
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDeleteIdea(idea.id)}
-                          >
-                            Delete
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
+                      <p className="mb-4 line-clamp-3 text-sm text-gray-600">
+                        {idea.content}
+                      </p>
+
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleConvertToDocument(idea)}
+                          disabled={isConverting === idea.id}
+                          className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          {isConverting === idea.id ? (
+                            <div className="mr-1 size-3 animate-spin rounded-full border-b-2 border-white" />
+                          ) : (
+                            <ExternalLink className="mr-1 size-3" />
+                          )}
+                          Create Doc
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteIdea(idea.id)}
+                          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}

@@ -83,8 +83,6 @@ export default function ForgotPasswordPage() {
         setError("")
         // Redirect straight to the main app instead of the dashboard proxy page
         router.push("/")
-      } else {
-        console.log(result)
       }
     } catch (err: any) {
       console.error("error", err.errors?.[0]?.longMessage ?? err)

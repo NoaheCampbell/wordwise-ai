@@ -15,15 +15,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("Starting system-wide suggestion cleanup via API...")
-
     const result = await cleanupAllOldSuggestionsAction()
 
     if (result.isSuccess) {
-      console.log(
-        `Cleanup completed: ${result.data.totalDeleted} suggestions deleted for ${result.data.usersProcessed} users`
-      )
-
       return NextResponse.json({
         success: true,
         message: result.message,

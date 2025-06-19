@@ -37,6 +37,14 @@ export const documentsTable = pgTable("documents", {
   analysis: jsonb("analysis").$type<DocumentAnalysis>(),
   enhancedAnalysis:
     jsonb("enhanced_analysis").$type<EnhancedDocumentAnalysis>(),
+
+  // Clarity score fields (eliminating need for separate clarity_scores table)
+  clarityScore: integer("clarity_score"), // 0-100 clarity score
+  clarityExplanation: text("clarity_explanation"), // Brief explanation of the score
+  clarityHighlights: jsonb("clarity_highlights").$type<string[]>().default([]), // Array of unclear sentences/phrases
+  clarityTextHash: text("clarity_text_hash"), // SHA-256 hash of analyzed text for caching
+  clarityAnalyzedAt: timestamp("clarity_analyzed_at"), // When clarity was last analyzed
+
   isPublic: boolean("is_public").notNull().default(false),
   slug: text("slug").unique(),
   version: integer("version").notNull().default(1),

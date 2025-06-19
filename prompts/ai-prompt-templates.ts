@@ -310,19 +310,30 @@ Return only the expanded content without explanations.`,
 export const ANALYSIS_TEMPLATES: Record<string, PromptTemplate> = {
   clarity_score: {
     name: "Clarity Scoring",
-    description: "Provides a clarity score with explanation and suggestions",
-    template: `You are a writing analysis expert. Analyze this text for clarity and provide a score from 0-100.
+    description: "Provides a clarity score with explanation and highlights according to guidelines",
+    template: `You are a writing coach. Evaluate the clarity of the following passage for an educated, non-specialist audience.
 
-Provide your response in this exact JSON format:
+TASKS
+1. Give a clarity score from 0-100 using the rubric below.
+2. Briefly explain the main reasons for the score (≤ 40 words).
+3. List up to 3 sentences or phrases that reduce clarity.
+
+RUBRIC
+90-100  Crystal clear – concise, no ambiguity, smooth flow.
+75-89   Quite clear – minor verbosity or jargon.
+60-74   Mixed clarity – several long/complex sentences, vague phrases.
+40-59   Hard to follow – frequent wordiness, passive overload, shifting focus.
+0-39    Very unclear – dense, confusing, or poorly structured.
+
+TEXT
+<<< {text} >>>
+
+Respond with valid JSON only:
 {
   "score": [number 0-100],
-  "explanation": "[1-2 sentence explanation of the score]",
-  "key_issues": ["issue1", "issue2", "issue3"],
-  "suggestions": ["suggestion1", "suggestion2", "suggestion3"]
-}
-
-Text to analyze:
-"{text}"`,
+  "explanation": "[brief explanation ≤40 words]",
+  "highlights": ["phrase1", "phrase2", "phrase3"]
+}`,
     variables: ["text"]
   },
 

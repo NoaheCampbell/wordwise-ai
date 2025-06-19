@@ -4,6 +4,7 @@ import {
   calculateClarityScoreForTextAction,
   getAverageClarityScoreAction
 } from "@/actions/ai-analysis-actions"
+import { AiClarityScore } from "@/types/ai-clarity-score-types"
 import { getDocumentsAction } from "@/actions/db/documents-actions"
 import { SelectDocument } from "@/db/schema"
 import { AISuggestion } from "@/types"
@@ -23,7 +24,7 @@ interface DocumentContextType {
   documents: SelectDocument[]
   currentDocument: SelectDocument | null
   clarityScore: number | null
-  liveClarityScore: number | null
+  liveClarityScore: AiClarityScore | null
   suggestions: AISuggestion[]
   isLoading: boolean
   isLoadingLiveScore: boolean
@@ -34,6 +35,7 @@ interface DocumentContextType {
   reloadClarityScore: () => void
   updateLiveClarityScore: (text: string) => Promise<void>
   clearLiveClarityScore: () => void
+  setSavedClarityScore: (clarityScore: AiClarityScore) => void
   setSuggestions: (suggestions: AISuggestion[]) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
   setCurrentContent: (content: string) => void
@@ -46,6 +48,8 @@ interface DocumentContextType {
   dismissSuggestion: (id: string) => void
   generateNewIdeas: () => Promise<void>
   registerGenerateNewIdeas: (callback: () => Promise<void>) => void
+  highlightPhrase: (phrase: string) => void
+  registerHighlightPhrase: (callback: (phrase: string) => void) => void
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(
@@ -60,7 +64,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     null
   )
   const [clarityScore, setClarityScore] = useState<number | null>(null)
-  const [liveClarityScore, setLiveClarityScore] = useState<number | null>(null)
+  const [liveClarityScore, setLiveClarityScore] =
+    useState<AiClarityScore | null>(null)
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingLiveScore, setIsLoadingLiveScore] = useState(false)
@@ -78,6 +83,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const generateIdeasCallback = useRef<() => Promise<void>>(async () => {
     console.warn("generateNewIdeas callback not registered")
   })
+
+  const highlightPhraseCallback = useRef<(phrase: string) => void>(
+    (phrase: string) => {
+      console.warn(
+        "highlightPhrase callback not registered for phrase:",
+        phrase
+      )
+    }
+  )
 
   const registerSuggestionCallbacks = useCallback(
     (apply: (id: string) => void, dismiss: (id: string) => void) => {
@@ -105,6 +119,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     []
   )
 
+  const highlightPhrase = useCallback((phrase: string) => {
+    highlightPhraseCallback.current(phrase)
+  }, [])
+
+  const registerHighlightPhrase = useCallback(
+    (callback: (phrase: string) => void) => {
+      highlightPhraseCallback.current = callback
+    },
+    []
+  )
+
   const reloadDocuments = useCallback(async () => {
     if (!user) return
     setIsLoading(true)
@@ -124,17 +149,30 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
   }, [user])
 
-  const updateLiveClarityScore = useCallback(async (text: string) => {
-    setIsLoadingLiveScore(true)
-    const result = await calculateClarityScoreForTextAction(text)
-    if (result.isSuccess) {
-      setLiveClarityScore(result.data)
-    }
-    setIsLoadingLiveScore(false)
-  }, [])
+  const updateLiveClarityScore = useCallback(
+    async (text: string) => {
+      setIsLoadingLiveScore(true)
+      const result = await calculateClarityScoreForTextAction(
+        text,
+        currentDocumentId || undefined
+      )
+      if (result.isSuccess && result.data) {
+        setLiveClarityScore(result.data)
+      } else {
+        // Don't clear the existing score if we can't calculate a new one
+        // This preserves saved scores when content is too short
+      }
+      setIsLoadingLiveScore(false)
+    },
+    [currentDocumentId]
+  )
 
   const clearLiveClarityScore = useCallback(() => {
     setLiveClarityScore(null)
+  }, [])
+
+  const setSavedClarityScore = useCallback((clarityScore: AiClarityScore) => {
+    setLiveClarityScore(clarityScore)
   }, [])
 
   useEffect(() => {
@@ -175,6 +213,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         reloadClarityScore,
         updateLiveClarityScore,
         clearLiveClarityScore,
+        setSavedClarityScore,
         setSuggestions,
         setIsAnalyzing,
         setCurrentContent,
@@ -183,7 +222,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         applySuggestion,
         dismissSuggestion,
         generateNewIdeas,
-        registerGenerateNewIdeas
+        registerGenerateNewIdeas,
+        highlightPhrase,
+        registerHighlightPhrase
       }}
     >
       {children}
