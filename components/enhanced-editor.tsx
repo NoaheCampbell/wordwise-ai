@@ -19,7 +19,8 @@ import {
   Trash2,
   Settings,
   ArrowLeft,
-  ChevronDown
+  ChevronDown,
+  Search
 } from "lucide-react"
 import {
   useState,
@@ -84,7 +85,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { SimpleResearchPanel } from "@/components/simple-research-panel"
+import { ResearchDialog } from "@/components/research-dialog"
 import { SocialSnippetGenerator } from "@/components/social-snippet-generator"
 import { DocumentShareDialog } from "@/components/document-share-dialog"
 import {
@@ -187,7 +188,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     reloadClarityScore,
     setSuggestions,
     registerSuggestionCallbacks,
-    setIsAnalyzing: setProviderIsAnalyzing
+    registerGenerateNewIdeas,
+    setIsAnalyzing: setProviderIsAnalyzing,
+    setCurrentContent,
+    setCurrentDocumentId
   } = useDocument()
 
   const [document, setDocument] = useState<SelectDocument | null>(
@@ -552,9 +556,68 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     dismissSuggestion(id)
   }
 
+  // Function to regenerate enhanced analysis
+  const regenerateEnhancedAnalysis = useCallback(async () => {
+    if (!user || !document) {
+      toast.error("No document to analyze")
+      return
+    }
+
+    try {
+      setProviderIsAnalyzing(true)
+      toast.info("Regenerating enhanced analysis...")
+
+      // Import the analysis action
+      const { analyzeDocumentForEnhancedIdeasAction } = await import(
+        "@/actions/research-ideation-actions"
+      )
+
+      // Run the enhanced analysis
+      const result = await analyzeDocumentForEnhancedIdeasAction({
+        title: title,
+        content: contentRef.current,
+        userId: user.id
+      })
+
+      if (result.isSuccess) {
+        // Update the document with the new analysis
+        const { updateDocumentAction } = await import(
+          "@/actions/db/documents-actions"
+        )
+        const updateResult = await updateDocumentAction(
+          document.id,
+          { enhancedAnalysis: result.data },
+          user.id,
+          true // Skip analysis to avoid recursion
+        )
+
+        if (updateResult.isSuccess) {
+          setDocument(updateResult.data)
+          toast.success("Enhanced analysis regenerated successfully!")
+          reloadDocuments()
+        } else {
+          toast.error("Failed to save enhanced analysis")
+        }
+      } else {
+        toast.error("Failed to regenerate enhanced analysis")
+      }
+    } catch (error) {
+      console.error("Error regenerating enhanced analysis:", error)
+      toast.error("Failed to regenerate enhanced analysis")
+    } finally {
+      setProviderIsAnalyzing(false)
+    }
+  }, [user, document, title, setProviderIsAnalyzing, reloadDocuments])
+
   useEffect(() => {
     registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
-  }, [registerSuggestionCallbacks, highlights])
+    registerGenerateNewIdeas(regenerateEnhancedAnalysis)
+  }, [
+    registerSuggestionCallbacks,
+    registerGenerateNewIdeas,
+    highlights,
+    regenerateEnhancedAnalysis
+  ])
 
   // Set up selection change listeners
   useEffect(() => {
@@ -599,6 +662,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       lastContentLength.current = (initialDocument.content || "").length
       lastCursorPosition.current = 0
 
+      // Update provider with current content and document ID
+      setCurrentContent(initialDocument.content || "")
+      setCurrentDocumentId(initialDocument.id)
+
       // Load cached suggestions for this document
       if (initialDocument.id) {
         loadCachedSuggestionsForDocument(initialDocument.id)
@@ -607,7 +674,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return () => {
       setSuggestions([])
     }
-  }, [initialDocument, setSuggestions])
+  }, [initialDocument, setSuggestions, setCurrentContent, setCurrentDocumentId])
 
   const throttle = <T extends (...args: any[]) => void>(
     func: T,
@@ -1869,6 +1936,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     contentRef.current = newContent
     setContentForWordCount(newContent)
+    setCurrentContent(newContent) // Update provider with current content
     setHasManuallyEdited(true)
     lastContentLength.current = newLength
 
@@ -2143,26 +2211,37 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
-        <div className="flex flex-1 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {document && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.push("/")}
-              className="text-gray-700 hover:bg-gray-200 hover:text-gray-900"
+              className="shrink-0 text-gray-700 hover:bg-gray-200 hover:text-gray-900"
             >
               <ArrowLeft className="size-4" />
             </Button>
           )}
-          <Input
+          <textarea
             value={title}
             onChange={e => setTitle(e.target.value)}
-            className="border-none bg-transparent p-0 text-lg font-semibold text-gray-900 focus-visible:ring-0"
+            className="min-w-0 flex-1 resize-none border-none bg-transparent p-0 text-lg font-semibold leading-tight text-gray-900 focus:outline-none focus-visible:ring-0"
             placeholder="Untitled Document"
+            rows={1}
+            style={{
+              overflow: "hidden",
+              wordWrap: "break-word",
+              whiteSpace: "pre-wrap"
+            }}
+            onInput={e => {
+              const target = e.target as HTMLTextAreaElement
+              target.style.height = "auto"
+              target.style.height = target.scrollHeight + "px"
+            }}
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {document && (
             <Button
               variant="outline"
@@ -2259,12 +2338,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           Analyze
         </Button>
 
-        <SimpleResearchPanel
-          documentId={document?.id}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
+          className="border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
+        >
+          <Search className="mr-2 size-4" />
+          Research
+        </Button>
+
+        <ResearchDialog
+          documentId={document?.id || ""}
           currentContent={content}
           isOpen={isResearchPanelOpen}
           onToggle={() => setIsResearchPanelOpen(!isResearchPanelOpen)}
-          onAddToBibliography={handleAddToBibliography}
         />
 
         <Separator orientation="vertical" className="h-6" />
@@ -2278,12 +2366,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-gray-100 dark:bg-gray-800"
+                      className="h-7 bg-gray-100 px-2 text-xs dark:bg-gray-800"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       Quick Tone
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2325,12 +2413,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-white dark:bg-gray-900"
+                      className="h-7 bg-white px-2 text-xs dark:bg-gray-900"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       AI Enhance
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2440,12 +2528,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="bg-white dark:bg-gray-900"
+                      className="h-7 bg-white px-2 text-xs dark:bg-gray-900"
                       disabled={!hasSelection}
                     >
-                      <Sparkles className="mr-2 size-4" />
+                      <Sparkles className="mr-1 size-3" />
                       Extend
-                      <ChevronDown className="ml-2 size-4" />
+                      <ChevronDown className="ml-1 size-3" />
                     </Button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -2485,21 +2573,21 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           </div>
         </TooltipProvider>
 
-        <SocialSnippetGenerator
-          document={document}
-          sourceText={content}
-          isOpen={isSocialSnippetOpen}
-          onOpenChange={setIsSocialSnippetOpen}
-        />
-      </div>
+        <div className="flex items-center gap-2">
+          <SocialSnippetGenerator
+            document={document}
+            sourceText={content}
+            isOpen={isSocialSnippetOpen}
+            onOpenChange={setIsSocialSnippetOpen}
+          />
 
-      {highlights.length > 0 && (
-        <div className="ml-auto flex items-center">
-          <Badge variant="secondary" className="ml-2">
-            {highlights.length} suggestions
-          </Badge>
+          {highlights.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {highlights.length} suggestions
+            </Badge>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
         <div className="flex items-center gap-4 text-xs">

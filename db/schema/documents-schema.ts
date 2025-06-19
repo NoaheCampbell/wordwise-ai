@@ -11,14 +11,28 @@ import {
   uuid,
   jsonb,
   integer,
-  boolean
+  boolean,
+  pgEnum
 } from "drizzle-orm/pg-core"
+import { DocumentAnalysis, EnhancedDocumentAnalysis } from "@/types"
+
+export const documentStatusEnum = pgEnum("document_status", [
+  "generating",
+  "complete",
+  "failed"
+])
+
+// The status of the document generation process.
 
 export const documentsTable = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
   title: text("title").notNull(),
   content: text("content").notNull(),
+  status: documentStatusEnum("status").notNull().default("complete"),
+  analysis: jsonb("analysis").$type<DocumentAnalysis>(),
+  enhancedAnalysis:
+    jsonb("enhanced_analysis").$type<EnhancedDocumentAnalysis>(),
   isPublic: boolean("is_public").notNull().default(false),
   slug: text("slug").unique(),
   version: integer("version").notNull().default(1),

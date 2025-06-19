@@ -5,6 +5,10 @@ import { InsertDocument, SelectDocument, documentsTable } from "@/db/schema/docu
 import { ActionState } from "@/types"
 import { eq, and } from "drizzle-orm"
 import { auth } from "@clerk/nextjs/server"
+import {
+  summarizeContentAction,
+  analyzeDocumentForEnhancedIdeasAction
+} from "@/actions/research-ideation-actions"
 
 function generateSlug(title: string): string {
   const slug = title
@@ -26,10 +30,36 @@ export async function createDocumentAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const [newDocument] = await db.insert(documentsTable).values({
+    const docToInsert: InsertDocument = {
       ...document,
       userId
-    }).returning()
+    }
+
+    if (docToInsert.content && docToInsert.content.trim().length > 0) {
+      const analysisResult = await summarizeContentAction(docToInsert.content)
+      if (analysisResult.isSuccess) {
+        docToInsert.analysis = analysisResult.data
+      } else {
+        console.warn(
+          `Could not analyze document on creation: ${analysisResult.message}`
+        )
+      }
+
+      const enhancedAnalysisResult =
+        await analyzeDocumentForEnhancedIdeasAction(docToInsert)
+      if (enhancedAnalysisResult.isSuccess) {
+        docToInsert.enhancedAnalysis = enhancedAnalysisResult.data
+      } else {
+        console.warn(
+          `Could not perform enhanced analysis on creation: ${enhancedAnalysisResult.message}`
+        )
+      }
+    }
+
+    const [newDocument] = await db
+      .insert(documentsTable)
+      .values(docToInsert)
+      .returning()
 
     return {
       isSuccess: true,
@@ -92,17 +122,60 @@ export async function getDocumentAction(
 export async function updateDocumentAction(
   id: string,
   data: Partial<InsertDocument>,
-  userId: string
+  userId: string,
+  skipAnalysis: boolean = true
 ): Promise<ActionState<SelectDocument>> {
   try {
+    const docToUpdate: Partial<InsertDocument> = { ...data }
+
+    // Skip expensive AI analysis by default for faster saves
+    if (!skipAnalysis && docToUpdate.content && docToUpdate.content.trim().length > 0) {
+      const analysisResult = await summarizeContentAction(docToUpdate.content)
+      if (analysisResult.isSuccess) {
+        docToUpdate.analysis = analysisResult.data
+      } else {
+        console.warn(
+          `Could not analyze document on update: ${analysisResult.message}`
+        )
+      }
+
+      const currentDoc = await db.query.documents.findFirst({
+        where: eq(documentsTable.id, id)
+      })
+
+      if (currentDoc) {
+        const docForAnalysis = {
+          ...currentDoc,
+          ...data
+        }
+        const enhancedAnalysisResult =
+          await analyzeDocumentForEnhancedIdeasAction(docForAnalysis)
+        if (enhancedAnalysisResult.isSuccess) {
+          docToUpdate.enhancedAnalysis = enhancedAnalysisResult.data
+        } else {
+          console.warn(
+            `Could not perform enhanced analysis on update: ${enhancedAnalysisResult.message}`
+          )
+        }
+      }
+    }
+
     const [updatedDocument] = await db
       .update(documentsTable)
-      .set(data)
+      .set(docToUpdate)
       .where(eq(documentsTable.id, id))
       .returning()
 
     if (!updatedDocument) {
       return { isSuccess: false, message: "Document not found" }
+    }
+
+    // Run analysis in background after save (fire-and-forget)
+    if (skipAnalysis && docToUpdate.content && docToUpdate.content.trim().length > 0) {
+      // Don't await - let it run in background
+      updateDocumentAnalysisInBackground(id, docToUpdate.content).catch(error => {
+        console.warn("Background analysis failed:", error)
+      })
     }
 
     return {
@@ -113,6 +186,44 @@ export async function updateDocumentAction(
   } catch (error) {
     console.error("Error updating document:", error)
     return { isSuccess: false, message: "Failed to update document" }
+  }
+}
+
+// Background analysis function
+async function updateDocumentAnalysisInBackground(id: string, content: string) {
+  try {
+    const docToUpdate: Partial<InsertDocument> = {}
+
+    const analysisResult = await summarizeContentAction(content)
+    if (analysisResult.isSuccess) {
+      docToUpdate.analysis = analysisResult.data
+    }
+
+    const currentDoc = await db.query.documents.findFirst({
+      where: eq(documentsTable.id, id)
+    })
+
+    if (currentDoc) {
+      const docForAnalysis = {
+        ...currentDoc,
+        content
+      }
+      const enhancedAnalysisResult =
+        await analyzeDocumentForEnhancedIdeasAction(docForAnalysis)
+      if (enhancedAnalysisResult.isSuccess) {
+        docToUpdate.enhancedAnalysis = enhancedAnalysisResult.data
+      }
+    }
+
+    // Update with analysis data only
+    if (Object.keys(docToUpdate).length > 0) {
+      await db
+        .update(documentsTable)
+        .set(docToUpdate)
+        .where(eq(documentsTable.id, id))
+    }
+  } catch (error) {
+    console.error("Background analysis error:", error)
   }
 }
 

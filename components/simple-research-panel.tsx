@@ -6,7 +6,7 @@ Simple Research Panel component focused on content summarization and article fin
 
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -35,20 +35,17 @@ import {
   findRelevantArticlesAction
 } from "@/actions/research-ideation-actions"
 import { Input } from "@/components/ui/input"
+import { DocumentAnalysis, SelectDocument } from "@/types"
 
 interface SimpleResearchPanelProps {
-  documentId?: string
-  currentContent?: string
+  document: SelectDocument | null
   isOpen?: boolean
   onToggle?: () => void
   onAddToBibliography?: (article: RelevantArticle) => void
+  showTrigger?: boolean
 }
 
-interface ContentSummary {
-  summary: string
-  mainPoints: string[]
-  keywords: string[]
-}
+interface ContentSummary extends DocumentAnalysis {}
 
 interface RelevantArticle {
   title: string
@@ -58,14 +55,14 @@ interface RelevantArticle {
 }
 
 export function SimpleResearchPanel({
-  documentId,
-  currentContent = "",
+  document,
   isOpen = false,
   onToggle,
-  onAddToBibliography
+  onAddToBibliography,
+  showTrigger = true
 }: SimpleResearchPanelProps) {
   const { user } = useUser()
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [isFindingArticles, setIsFindingArticles] = useState(false)
   const [allowedDomains, setAllowedDomains] = useState("")
   const [disallowedDomains, setDisallowedDomains] = useState("")
   const [contentSummary, setContentSummary] = useState<ContentSummary | null>(
@@ -74,32 +71,32 @@ export function SimpleResearchPanel({
   const [articles, setArticles] = useState<RelevantArticle[]>([])
   const [addedArticles, setAddedArticles] = useState<Set<string>>(new Set())
 
-  const handleAnalyzeContent = async () => {
+  useEffect(() => {
+    if (document?.analysis) {
+      setContentSummary(document.analysis)
+    } else {
+      setContentSummary(null)
+    }
+  }, [document])
+
+  const handleFindArticles = async () => {
     if (!user) {
       toast.error("Please sign in to use research features")
       return
     }
 
-    if (!currentContent.trim()) {
-      toast.error("Write some content first to analyze and research")
+    if (!document?.analysis?.keywords) {
+      toast.error(
+        "No analysis found. Please save your document to generate one."
+      )
       return
     }
 
-    setIsAnalyzing(true)
+    setIsFindingArticles(true)
     try {
-      // Summarize the content
-      const summaryResult = await summarizeContentAction(currentContent)
-      if (!summaryResult.isSuccess) {
-        toast.error(summaryResult.message)
-        return
-      }
-
-      setContentSummary(summaryResult.data)
-
-      // Find relevant articles
       const articlesResult = await findRelevantArticlesAction(
-        summaryResult.data.keywords,
-        documentId,
+        document.analysis.keywords,
+        document.id,
         allowedDomains
           .split(",")
           .map(d => d.trim())
@@ -120,17 +117,15 @@ export function SimpleResearchPanel({
           })
         )
         setArticles(mappedArticles)
-        toast.success(
-          `Analyzed content and found ${mappedArticles.length} relevant articles!`
-        )
+        toast.success(`Found ${mappedArticles.length} relevant articles!`)
       } else {
         toast.error(articlesResult.message)
       }
     } catch (error) {
-      toast.error("Failed to analyze content")
-      console.error("Analysis error:", error)
+      toast.error("Failed to find articles")
+      console.error("Article finding error:", error)
     } finally {
-      setIsAnalyzing(false)
+      setIsFindingArticles(false)
     }
   }
 
@@ -141,41 +136,48 @@ export function SimpleResearchPanel({
 
   return (
     <Dialog open={isOpen} onOpenChange={onToggle}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
-        >
-          <Search className="mr-2 size-4" />
-          Research
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      {showTrigger && (
+        <DialogTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800"
+          >
+            <Search className="mr-2 size-4" />
+            Research
+          </Button>
+        </DialogTrigger>
+      )}
+      <DialogContent
+        className="flex w-[90vw] max-w-4xl flex-col overflow-hidden"
+        style={{ maxHeight: "90vh" }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="size-5" />
             Content Research
           </DialogTitle>
           <DialogDescription>
-            Analyze your content and find relevant articles
+            Find relevant articles based on your saved content
           </DialogDescription>
         </DialogHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="flex flex-1 flex-col space-y-4 overflow-hidden">
           {/* Analyze Button */}
           <Button
-            onClick={handleAnalyzeContent}
-            disabled={isAnalyzing || !currentContent.trim()}
+            onClick={handleFindArticles}
+            disabled={isFindingArticles || !document?.analysis}
             className="w-full"
             size="lg"
           >
-            {isAnalyzing ? (
+            {isFindingArticles ? (
               <RefreshCw className="mr-2 size-4 animate-spin" />
             ) : (
-              <Sparkles className="mr-2 size-4" />
+              <Search className="mr-2 size-4" />
             )}
-            {isAnalyzing ? "Analyzing..." : "Analyze Content & Find Articles"}
+            {isFindingArticles
+              ? "Finding Articles..."
+              : "Find Relevant Articles"}
           </Button>
 
           <div className="space-y-2">
@@ -193,7 +195,7 @@ export function SimpleResearchPanel({
             />
           </div>
 
-          {!currentContent.trim() && (
+          {!document?.content?.trim() && (
             <div className="py-4 text-center text-gray-500">
               <Sparkles className="mx-auto mb-2 size-8 opacity-50" />
               <div className="text-sm">
@@ -202,7 +204,7 @@ export function SimpleResearchPanel({
             </div>
           )}
 
-          <ScrollArea className="h-[60vh]">
+          <ScrollArea className="flex-1 overflow-auto">
             <div className="space-y-6 pr-4">
               {/* Content Summary */}
               {contentSummary && (
@@ -214,7 +216,7 @@ export function SimpleResearchPanel({
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-sm text-blue-900">
+                      <p className="whitespace-pre-wrap break-words text-sm text-blue-900">
                         {contentSummary.summary}
                       </p>
                     </div>
@@ -229,8 +231,10 @@ export function SimpleResearchPanel({
                             key={index}
                             className="text-muted-foreground flex items-start text-sm"
                           >
-                            <span className="text-primary mr-2 mt-0.5">•</span>
-                            <span>{point}</span>
+                            <span className="text-primary mr-2 mt-0.5 shrink-0">
+                              •
+                            </span>
+                            <span className="break-words">{point}</span>
                           </li>
                         ))}
                       </ul>

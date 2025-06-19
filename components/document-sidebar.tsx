@@ -21,8 +21,10 @@ import {
   Filter,
   TrendingUp,
   BarChart3,
-  Plus
+  Plus,
+  Lightbulb
 } from "lucide-react"
+import { IdeasDialog } from "@/components/ideas-dialog"
 import { useUser } from "@clerk/nextjs"
 import { useRouter, usePathname } from "next/navigation"
 import { createDocumentAction } from "@/actions/db/documents-actions"
@@ -146,6 +148,19 @@ export function DocumentSidebar() {
                   Documents
                 </div>
               </div>
+            </div>
+
+            {/* Ideas Hub Button */}
+            <div className="mt-3 px-2">
+              <IdeasDialog>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start gap-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
+                >
+                  <Lightbulb className="size-4" />
+                  <span className="text-sm font-medium">Ideas Hub</span>
+                </Button>
+              </IdeasDialog>
             </div>
           </SidebarGroupContent>
         </SidebarGroup>

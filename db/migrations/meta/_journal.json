@@ -29,6 +29,13 @@
       "when": 1750275606772,
       "tag": "0003_loud_diamondback",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1750291694165,
+      "tag": "0004_gifted_snowbird",
+      "breakpoints": true
     }
   ]
 }

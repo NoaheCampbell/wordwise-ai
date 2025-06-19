@@ -41,6 +41,7 @@ interface SocialSnippetGeneratorProps {
   documentId?: string // Keep for backward compatibility
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
+  trigger?: React.ReactNode
 }
 
 export function SocialSnippetGenerator({
@@ -48,7 +49,8 @@ export function SocialSnippetGenerator({
   document,
   documentId,
   isOpen = false,
-  onOpenChange
+  onOpenChange,
+  trigger
 }: SocialSnippetGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false)
   const [snippets, setSnippets] = useState<SocialVariation[]>([])
@@ -164,10 +166,12 @@ export function SocialSnippetGenerator({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
-          <Share2 className="size-4" />
-          Create Social Post
-        </Button>
+        {trigger || (
+          <Button variant="outline" size="sm" className="gap-2">
+            <Share2 className="size-4" />
+            Create Social Post
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="flex max-h-[90vh] max-w-4xl flex-col p-0">
         <DialogHeader className="p-6 pb-4">

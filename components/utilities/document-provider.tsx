@@ -21,24 +21,31 @@ import {
 
 interface DocumentContextType {
   documents: SelectDocument[]
+  currentDocument: SelectDocument | null
   clarityScore: number | null
   liveClarityScore: number | null
   suggestions: AISuggestion[]
   isLoading: boolean
   isLoadingLiveScore: boolean
   isAnalyzing: boolean
+  currentContent: string
+  currentDocumentId: string | null
   reloadDocuments: () => void
   reloadClarityScore: () => void
   updateLiveClarityScore: (text: string) => Promise<void>
   clearLiveClarityScore: () => void
   setSuggestions: (suggestions: AISuggestion[]) => void
   setIsAnalyzing: (isAnalyzing: boolean) => void
+  setCurrentContent: (content: string) => void
+  setCurrentDocumentId: (id: string | null) => void
   registerSuggestionCallbacks: (
     apply: (id: string) => void,
     dismiss: (id: string) => void
   ) => void
   applySuggestion: (id: string) => void
   dismissSuggestion: (id: string) => void
+  generateNewIdeas: () => Promise<void>
+  registerGenerateNewIdeas: (callback: () => Promise<void>) => void
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(
@@ -49,16 +56,27 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const { user } = useUser()
   const pathname = usePathname()
   const [documents, setDocuments] = useState<SelectDocument[]>([])
+  const [currentDocument, setCurrentDocument] = useState<SelectDocument | null>(
+    null
+  )
   const [clarityScore, setClarityScore] = useState<number | null>(null)
   const [liveClarityScore, setLiveClarityScore] = useState<number | null>(null)
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingLiveScore, setIsLoadingLiveScore] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [currentContent, setCurrentContent] = useState("")
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(
+    null
+  )
 
   const suggestionCallbacks = useRef({
     apply: (_id: string) => {},
     dismiss: (_id: string) => {}
+  })
+
+  const generateIdeasCallback = useRef<() => Promise<void>>(async () => {
+    console.warn("generateNewIdeas callback not registered")
   })
 
   const registerSuggestionCallbacks = useCallback(
@@ -76,6 +94,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     suggestionCallbacks.current.dismiss(id)
   }, [])
 
+  const generateNewIdeas = useCallback(async () => {
+    await generateIdeasCallback.current()
+  }, [])
+
+  const registerGenerateNewIdeas = useCallback(
+    (callback: () => Promise<void>) => {
+      generateIdeasCallback.current = callback
+    },
+    []
+  )
+
   const reloadDocuments = useCallback(async () => {
     if (!user) return
     setIsLoading(true)
@@ -84,6 +113,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       setDocuments(result.data)
     }
     setIsLoading(false)
+    setSuggestions([])
   }, [user])
 
   const reloadClarityScore = useCallback(async () => {
@@ -119,25 +149,41 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     }
   }, [user, reloadDocuments, reloadClarityScore, pathname])
 
+  useEffect(() => {
+    if (currentDocumentId) {
+      const doc = documents.find(d => d.id === currentDocumentId)
+      setCurrentDocument(doc || null)
+    } else {
+      setCurrentDocument(null)
+    }
+  }, [currentDocumentId, documents])
+
   return (
     <DocumentContext.Provider
       value={{
         documents,
+        currentDocument,
         clarityScore,
         liveClarityScore,
         suggestions,
         isLoading,
         isLoadingLiveScore,
         isAnalyzing,
+        currentContent,
+        currentDocumentId,
         reloadDocuments,
         reloadClarityScore,
         updateLiveClarityScore,
         clearLiveClarityScore,
         setSuggestions,
         setIsAnalyzing,
+        setCurrentContent,
+        setCurrentDocumentId,
         registerSuggestionCallbacks,
         applySuggestion,
-        dismissSuggestion
+        dismissSuggestion,
+        generateNewIdeas,
+        registerGenerateNewIdeas
       }}
     >
       {children}

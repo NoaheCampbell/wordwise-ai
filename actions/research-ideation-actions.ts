@@ -10,10 +10,15 @@ Includes smart source finding, idea generation, and social snippet creation.
 import { ActionState } from "@/types"
 import OpenAI from "openai"
 import { auth } from "@clerk/nextjs/server"
-import { createIdeaAction, createResearchSourceAction, createSocialSnippetAction } from "@/actions/db/ideas-actions"
+import { createIdeaAction, createResearchSourceAction } from "@/actions/db/ideas-actions"
 import { db } from "@/db/db"
-import { documentsTable } from "@/db/schema"
+import { documentsTable, SelectDocument, documentStatusEnum } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import {
+  DocumentAnalysis,
+  EnhancedDocumentAnalysis,
+  ResearchSource
+} from "@/types"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -289,32 +294,35 @@ Please provide at least 5 high-quality sources. The summary should be concise an
 // ============================================================================
 
 /**
- * Search user's past documents for relevant content
+ * Enhanced Past-Issue Analyzer with content analysis
  */
-export async function searchPastDocumentsAction(
-  query: string,
-  currentDocumentId?: string
-): Promise<ActionState<Array<{ id: string; title: string; content: string; relevance: string }>>> {
+export async function analyzePastDocumentsAction(
+  userId: string,
+  currentContent: string,
+  limit: number = 10
+): Promise<ActionState<Array<{ 
+  id: string; 
+  title: string; 
+  content: string; 
+  tags: string[];
+  campaignType: string | null;
+  mainTopics: string[];
+  themes: string[];
+  contentType: string;
+  createdAt: Date;
+  similarity?: number;
+}>>> {
   try {
-    const { userId } = await auth()
-    if (!userId) {
-      return { isSuccess: false, message: "User not authenticated" }
-    }
-
     if (!checkResearchRateLimit(userId)) {
       return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
     }
 
-    // Get user's past documents
-    const documents = await db.query.documents.findMany({
+    // Get user's past documents with full content
+    const pastDocuments = await db.query.documents.findMany({
       where: eq(documentsTable.userId, userId),
-      orderBy: (documents, { desc }) => [desc(documents.updatedAt)]
+      orderBy: (documents, { desc }) => [desc(documents.updatedAt)],
+      limit: limit
     })
-
-    // Filter out current document if provided
-    const pastDocuments = currentDocumentId 
-      ? documents.filter(doc => doc.id !== currentDocumentId)
-      : documents
 
     if (pastDocuments.length === 0) {
       return {
@@ -324,43 +332,140 @@ export async function searchPastDocumentsAction(
       }
     }
 
-    // Use GPT to analyze relevance
-    const documentsText = pastDocuments.map(doc => 
-      `ID: ${doc.id}\nTitle: ${doc.title}\nContent: ${doc.content.slice(0, 500)}...`
-    ).join("\n\n---\n\n")
+    // Use GPT to analyze and extract main topics from each document
+    const documentsWithTopics = await Promise.all(
+      pastDocuments.map(async (doc) => {
+        try {
+          const analysisPrompt = `
+Analyze this newsletter content and extract:
+1. Main topics (3-5 key topics as short phrases)
+2. Content themes and angles covered
+
+Return JSON with this structure:
+{
+  "mainTopics": ["topic1", "topic2", "topic3"],
+  "themes": ["theme1", "theme2"],
+  "contentType": "newsletter" | "blog" | "guide" | "announcement"
+}
+
+Content (first 1000 chars):
+"${doc.content.slice(0, 1000)}"
+`
+          
+          const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini", // Use mini for analysis to save costs
+            messages: [{ role: "user", content: analysisPrompt }],
+            temperature: 0.2,
+            max_tokens: 200,
+            response_format: { type: "json_object" }
+          })
+
+          const analysis = JSON.parse(response.choices[0]?.message?.content || '{"mainTopics": [], "themes": []}')
+          
+          return {
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            tags: doc.tags || [],
+            campaignType: doc.campaignType,
+            mainTopics: analysis.mainTopics || [],
+            themes: analysis.themes || [],
+            contentType: analysis.contentType || "newsletter",
+            createdAt: doc.createdAt
+          }
+        } catch (error) {
+          console.error(`Error analyzing document ${doc.id}:`, error)
+          return {
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            tags: doc.tags || [],
+            campaignType: doc.campaignType,
+            mainTopics: [],
+            themes: [],
+            contentType: "newsletter",
+            createdAt: doc.createdAt
+          }
+        }
+      })
+    )
+
+    return {
+      isSuccess: true,
+      message: `Analyzed ${documentsWithTopics.length} past documents`,
+      data: documentsWithTopics
+    }
+  } catch (error) {
+    console.error("Error analyzing past documents:", error)
+    return { isSuccess: false, message: "Failed to analyze past documents" }
+  }
+}
+
+/**
+ * Search user's past documents for relevant content based on a query
+ */
+export async function searchPastDocumentsAction(
+  query: string,
+  currentDocumentId?: string
+): Promise<
+  ActionState<Array<{ id: string; title: string; contentSnippet: string; relevance: number }>>
+> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    const userDocuments = await db.query.documents.findMany({
+      where: eq(documentsTable.userId, userId)
+    })
+
+    if (userDocuments.length === 0) {
+      return {
+        isSuccess: true,
+        message: "No past documents to search",
+        data: []
+      }
+    }
 
     const prompt = `
-You are a research assistant. Given a search query and a list of past documents, identify the most relevant documents and explain why they're relevant.
+I have the following documents. Find the most relevant documents for the query "${query}".
+Return a JSON array of objects with "id" and "relevanceScore" (0-100).
+Do not include the current document (ID: ${currentDocumentId}) in the results.
 
-Search Query: "${query}"
-
-Past Documents:
-${documentsText}
-
-Return a JSON object with a "results" array. Each result should have:
-- id: document ID
-- title: document title 
-- content: brief excerpt (1-2 sentences)
-- relevance: explanation of why it's relevant
-
-Limit to top 5 most relevant documents.
-
-Response:`
-
+Documents:
+${JSON.stringify(
+  userDocuments.map(doc => ({
+    id: doc.id,
+    title: doc.title,
+    content: doc.content.slice(0, 300)
+  }))
+)}
+`
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 1000,
       response_format: { type: "json_object" }
     })
 
-    const result = JSON.parse(response.choices[0]?.message?.content || '{"results": []}')
-    
+    const result = JSON.parse(response.choices[0]?.message?.content || "[]")
+    const relevantDocs = result
+      .map((res: { id: string; relevanceScore: number }) => {
+        const doc = userDocuments.find(d => d.id === res.id)
+        if (!doc) return null
+        return {
+          id: doc.id,
+          title: doc.title,
+          contentSnippet: doc.content.slice(0, 150) + "...",
+          relevance: res.relevanceScore
+        }
+      })
+      .filter(Boolean)
+
     return {
       isSuccess: true,
-      message: "Past document analysis completed",
-      data: result.results || []
+      message: "Searched past documents.",
+      data: relevantDocs
     }
   } catch (error) {
     console.error("Error searching past documents:", error)
@@ -374,13 +479,43 @@ Response:`
 
 interface GeneratedIdea {
   title: string
-  outline: string
-  type: "headline" | "outline" | "topic_suggestion"
+  content: string
+  type: "headline" | "topic" | "outline"
   confidence: number
+  reasoning: string
+  outline?: string
+}
+
+// Map frontend idea types to database enum values
+function mapIdeaTypeToEnum(type: "headline" | "topic" | "outline"): "headline" | "topic_suggestion" | "outline" {
+  switch (type) {
+    case "headline":
+      return "headline"
+    case "topic":
+      return "topic_suggestion"
+    case "outline":
+      return "outline"
+    default:
+      return "topic_suggestion"
+  }
+}
+
+// Map frontend parameter types to internal types
+function mapInputTypeToInternal(type: "headlines" | "topics" | "outlines"): "headline" | "topic" | "outline" {
+  switch (type) {
+    case "headlines":
+      return "headline"
+    case "topics":
+      return "topic"
+    case "outlines":
+      return "outline"
+    default:
+      return "headline"
+  }
 }
 
 /**
- * Generate content ideas based on current document and past coverage
+ * Generate ideas based on the current content and past document analysis.
  */
 export async function generateIdeasAction(
   currentContent: string,
@@ -393,109 +528,40 @@ export async function generateIdeasAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    if (!checkResearchRateLimit(userId)) {
-      return { isSuccess: false, message: "Research rate limit exceeded. Please try again later." }
-    }
+    const internalType = mapInputTypeToInternal(ideaType)
 
-    // Get user's past documents for context
-    const pastDocuments = await db.query.documents.findMany({
-      where: eq(documentsTable.userId, userId),
-      orderBy: (documents, { desc }) => [desc(documents.updatedAt)]
-    })
+    let prompt = `
+Please generate ${ideaType} based on the following content.
+For each idea, provide a title, a short content/outline, the idea type, a confidence score (0-100), and reasoning.
+Return as a JSON object with an "ideas" array.
 
-    const pastTopics = pastDocuments
-      .map(doc => doc.title)
-      .slice(0, 10)
-      .join(", ")
+Content:
+"${currentContent.slice(0, 2000)}"
 
-    let prompt = ""
-    let responseType = "headline"
-
-    switch (ideaType) {
-      case "headlines":
-        responseType = "headline"
-        prompt = `
-You are a content strategist. Based on the current content and past topics, generate 3 compelling headline ideas for future content.
-
-Current Content:
-"${currentContent.slice(0, 1000)}"
-
-Past Topics: ${pastTopics}
-
-Generate 3 headline ideas that:
-1. Build on themes from current content
-2. Avoid duplicating past topics
-3. Are engaging and specific
-
-Return JSON with "ideas" array. Each idea should have:
-- title: the headline
-- outline: 2-3 sentence description
-- confidence: relevance score (0-100)
-
-Ideas:`
-        break
-
-      case "topics":
-        responseType = "topic_suggestion"
-        prompt = `
-You are a content strategist. Based on current content and past coverage, suggest 3 new topic areas to explore.
-
-Current Content:
-"${currentContent.slice(0, 1000)}"
-
-Past Topics: ${pastTopics}
-
-Generate 3 topic suggestions that:
-1. Complement current content themes
-2. Explore new angles not covered before
-3. Would interest the same audience
-
-Return JSON with "ideas" array. Each idea should have:
-- title: topic name
-- outline: why this topic matters and what to cover
-- confidence: relevance score (0-100)
-
-Topics:`
-        break
-
-      case "outlines":
-        responseType = "outline"
-        prompt = `
-You are a content strategist. Create 3 detailed content outlines based on the current content style and themes.
-
-Current Content:
-"${currentContent.slice(0, 1000)}"
-
-Past Topics: ${pastTopics}
-
-Generate 3 content outlines that:
-1. Match the tone and style of current content
-2. Expand on related themes
-3. Are actionable and structured
-
-Return JSON with "ideas" array. Each idea should have:
-- title: content title
-- outline: detailed 3-4 point structure
-- confidence: relevance score (0-100)
-
-Outlines:`
-        break
-    }
+Example JSON structure for each idea:
+{
+  "title": "Idea Title",
+  "content": "A short paragraph for the topic, or a list of bullet points for an outline.",
+  "type": "${internalType}",
+  "confidence": 90,
+  "reasoning": "This idea is good because..."
+}
+`
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 1000,
       response_format: { type: "json_object" }
     })
 
-    const result = JSON.parse(response.choices[0]?.message?.content || '{"ideas": []}')
+    const result = JSON.parse(response.choices[0]?.message?.content || '{"ideas":[]}')
     const ideas: GeneratedIdea[] = (result.ideas || []).map((idea: any) => ({
       title: idea.title,
-      outline: idea.outline,
-      type: responseType as any,
-      confidence: idea.confidence || 80
+      content: idea.content || idea.outline || "",
+      outline: idea.content || idea.outline || "",
+      type: idea.type,
+      confidence: idea.confidence,
+      reasoning: idea.reasoning
     }))
 
     return {
@@ -510,34 +576,425 @@ Outlines:`
 }
 
 /**
- * Save generated idea to database
+ * Generate enhanced strategic ideas based on comprehensive past content analysis
+ */
+export async function generateEnhancedIdeasAction(
+  currentContent: string,
+  enhancedAnalysis: EnhancedDocumentAnalysis,
+  ideaType: "headlines" | "topics" | "outlines" = "headlines"
+): Promise<ActionState<GeneratedIdea[]>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    if (!checkResearchRateLimit(userId)) {
+      return {
+        isSuccess: false,
+        message: "Research rate limit exceeded. Please try again later."
+      }
+    }
+
+    const internalType = mapInputTypeToInternal(ideaType)
+
+    // Build comprehensive context from enhanced analysis
+    const pastTopics = enhancedAnalysis.topTopics.map(t => t.topic).join(", ")
+    const themes = enhancedAnalysis.themes.join(", ")
+    const contentGaps = enhancedAnalysis.contentGaps.join("; ")
+    const recentDocuments = enhancedAnalysis.analyzedDocuments
+      .slice(0, 5)
+      .map(doc => `"${doc.title}" (${doc.mainTopics.join(", ")})`)
+      .join("; ")
+
+    let prompt = ""
+
+    if (ideaType === "headlines") {
+      prompt = `
+You are a strategic content creator. Generate compelling newsletter headlines that avoid oversaturated topics and fill content gaps.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 5-7 unique headline ideas
+- Avoid topics already heavily covered (${pastTopics})
+- Focus on filling identified content gaps
+- Make headlines compelling and click-worthy
+- Ensure each headline offers a fresh perspective
+- Include confidence score based on uniqueness and gap-filling potential
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Compelling headline that fills a content gap",
+  "content": "Brief description of what this headline would cover and why it's strategically valuable",
+  "type": "headline",
+  "confidence": 85,
+  "reasoning": "This fills the gap in [specific area] and offers a fresh angle on [topic] that you haven't covered extensively"
+}
+`
+    } else if (ideaType === "topics") {
+      prompt = `
+You are a strategic content strategist. Generate topic suggestions that expand into underexplored areas based on comprehensive content analysis.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 5-7 strategic topic areas to explore
+- Focus on topics that complement but don't duplicate past work
+- Address identified content gaps systematically
+- Consider emerging trends in your established themes
+- Provide topics that can generate multiple pieces of content
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Strategic topic area to explore",
+  "content": "Detailed explanation of this topic area, why it's strategically important, what subtopics it includes, and how it connects to your existing themes while filling gaps",
+  "type": "topic",
+  "confidence": 90,
+  "reasoning": "This topic strategically fills gaps in [area] while building on your strength in [theme]. It offers multiple content opportunities and addresses an underexplored area in your content portfolio"
+}
+`
+    } else if (ideaType === "outlines") {
+      prompt = `
+You are a strategic content planner. Generate detailed content outlines that leverage your past content insights to create comprehensive, gap-filling pieces.
+
+ANALYSIS CONTEXT:
+- Past Topics Covered: ${pastTopics}
+- Key Themes: ${themes}
+- Content Gaps to Fill: ${contentGaps}
+- Recent Documents: ${recentDocuments}
+- Current Content: "${currentContent.slice(0, 1000)}"
+
+REQUIREMENTS:
+- Generate 4-6 detailed content outlines
+- Each outline should address a specific content gap
+- Build on your established expertise while exploring new angles
+- Include specific sections, key points, and strategic positioning
+- Make outlines comprehensive enough to guide full content creation
+
+Return JSON with "ideas" array. Each idea should have:
+{
+  "title": "Comprehensive content piece title",
+  "content": "Detailed outline including: 1. Introduction strategy, 2. Main sections with key points, 3. How this connects to your past work, 4. What new ground it covers, 5. Target audience considerations, 6. Call-to-action suggestions",
+  "type": "outline",
+  "confidence": 88,
+  "reasoning": "This outline strategically addresses the gap in [area] while leveraging your established authority in [theme]. It provides a comprehensive framework for creating content that both builds on your expertise and explores new territory"
+}
+`
+    }
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+      response_format: { type: "json_object" }
+    })
+
+    const result = JSON.parse(response.choices[0]?.message?.content || '{"ideas":[]}')
+    const ideas: GeneratedIdea[] = (result.ideas || []).map((idea: any) => ({
+      title: idea.title,
+      content: idea.content || idea.outline || "",
+      outline: idea.content || idea.outline || "",
+      type: idea.type,
+      confidence: idea.confidence,
+      reasoning: idea.reasoning
+    }))
+
+    return {
+      isSuccess: true,
+      message: `Generated ${ideas.length} strategic ${ideaType} based on your content analysis`,
+      data: ideas
+    }
+  } catch (error) {
+    console.error("Error generating enhanced ideas:", error)
+    return { isSuccess: false, message: "Failed to generate enhanced ideas" }
+  }
+}
+
+/**
+ * Save a generated idea to the database.
  */
 export async function saveIdeaAction(
   idea: GeneratedIdea,
   documentId?: string
 ): Promise<ActionState<void>> {
   try {
-    const result = await createIdeaAction({
-      documentId,
-      type: idea.type,
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    await createIdeaAction({
+      documentId: documentId,
       title: idea.title,
-      content: idea.outline,
-      metadata: { confidence: idea.confidence },
-      tags: ["ai-generated"]
+      content: idea.content,
+      type: mapIdeaTypeToEnum(idea.type)
     })
 
-    if (result.isSuccess) {
-      return {
-        isSuccess: true,
-        message: "Idea saved successfully",
-        data: undefined
-      }
-    } else {
-      return result
+    return {
+      isSuccess: true,
+      message: "Idea saved successfully",
+      data: undefined
     }
   } catch (error) {
     console.error("Error saving idea:", error)
     return { isSuccess: false, message: "Failed to save idea" }
+  }
+}
+
+/**
+ * Convert an idea into a new document with recommended sources
+ */
+// Quick enhanced content generation (synchronous, no AI calls)
+function generateQuickEnhancedContent(
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): string {
+  if (ideaType === "headline") {
+    return `# ${ideaTitle}
+
+## Introduction
+${ideaContent}
+
+## Key Points
+- [Add your main arguments and insights here]
+- [Supporting evidence or examples]
+- [Additional key points]
+
+## Evidence & Research
+[Add credible sources, statistics, expert quotes, or case studies]
+
+## Implications
+[Discuss what this means for your audience - why should they care?]
+
+## Conclusion
+[Tie everything together and reinforce the main message]
+
+## Call to Action
+[What do you want readers to do after reading this?]
+
+---
+*Research sources will be automatically added below as you find them.*`
+  } else if (ideaType === "topic_suggestion") {
+    return `# ${ideaTitle}
+
+## Executive Summary
+${ideaContent}
+
+## Background & Context
+[Historical context, current state, why this topic matters now]
+
+## Key Themes & Trends
+### Theme 1: [Insert Theme]
+[Analysis of first major theme]
+
+### Theme 2: [Insert Theme]  
+[Analysis of second major theme]
+
+### Theme 3: [Insert Theme]
+[Analysis of third major theme]
+
+## Stakeholders & Perspectives
+### Primary Stakeholders
+- [Who is most affected by this topic?]
+- [What are their interests and concerns?]
+
+### Secondary Stakeholders
+- [Who else has a stake in this topic?]
+- [How might they be impacted?]
+
+## Current Challenges & Opportunities
+### Challenges
+- [Major obstacle #1]
+- [Major obstacle #2]
+- [Major obstacle #3]
+
+### Opportunities
+- [Potential solution or opportunity #1]
+- [Potential solution or opportunity #2]
+- [Potential solution or opportunity #3]
+
+## Future Outlook
+[Where is this topic heading? What changes do you anticipate?]
+
+## Recommendations
+1. [Actionable recommendation #1]
+2. [Actionable recommendation #2]
+3. [Actionable recommendation #3]
+
+---
+*Research sources will be automatically added below as you find them.*`
+  } else if (ideaType === "outline") {
+    return `# ${ideaTitle}
+
+## Initial Framework
+${ideaContent}
+
+## Detailed Structure
+
+### Section 1: [Title]
+[Develop the first major section]
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+### Section 2: [Title]  
+[Develop the second major section]
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+### Section 3: [Title]
+[Develop the third major section]
+- Key points to cover:
+- Supporting evidence needed:
+- Examples to include:
+
+## Research Requirements
+[What information do you need to gather to support this outline?]
+
+## Next Steps
+1. [First development priority]
+2. [Second development priority]
+3. [Third development priority]
+
+---
+*Research sources will be automatically added below as you find them.*`
+  } else {
+    return `# ${ideaTitle}
+
+${ideaContent}
+
+## Development Notes
+[Use this space to expand on your initial idea]
+
+## Research & Evidence
+[Add supporting information, sources, and data]
+
+## Next Steps
+[What actions need to be taken to develop this further?]
+
+---
+*Research sources will be automatically added below as you find them.*`
+  }
+}
+
+/**
+ * Creates a document from an idea.
+ * This just creates the entry in the database. The content generation is handled by another action.
+ */
+export async function convertIdeaToDocumentAction(
+  ideaId: string,
+  ideaTitle: string
+): Promise<ActionState<{ documentId: string }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Create a new document with a placeholder status
+    const [newDocument] = await db
+      .insert(documentsTable)
+      .values({
+        userId,
+        title: ideaTitle,
+        content: "Generating content...",
+        status: "generating"
+      })
+      .returning({ id: documentsTable.id })
+
+    if (!newDocument) {
+      return { isSuccess: false, message: "Failed to create document." }
+    }
+
+    return {
+      isSuccess: true,
+      message: "Document creation initiated",
+      data: { documentId: newDocument.id }
+    }
+  } catch (error) {
+    console.error("Error initiating document from idea:", error)
+    return {
+      isSuccess: false,
+      message: "Failed to initiate document creation."
+    }
+  }
+}
+
+/**
+ * Generates the full content for a document that was created from an idea.
+ */
+export async function generateDocumentFromIdeaAction(
+  documentId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+): Promise<ActionState<{ documentId: string }>> {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // 1. Generate the actual content
+    const generatedContent = generateQuickEnhancedContent(
+      ideaTitle,
+      ideaContent,
+      ideaType
+    )
+
+    // 2. Update the document with the new content and status
+    const [updatedDocument] = await db
+      .update(documentsTable)
+      .set({
+        content: generatedContent,
+        status: "complete",
+        updatedAt: new Date()
+      })
+      .where(eq(documentsTable.id, documentId))
+      .returning({ id: documentsTable.id })
+
+    if (!updatedDocument) {
+      await db
+        .update(documentsTable)
+        .set({ status: "failed" })
+        .where(eq(documentsTable.id, documentId))
+      return { isSuccess: false, message: "Failed to update document content." }
+    }
+
+    // 3. Delete the original idea (optional, but good for cleanup)
+    // We are not deleting the idea anymore to keep it for user's reference
+    // await db.delete(ideasTable).where(eq(ideasTable.id, ideaId));
+
+    return {
+      isSuccess: true,
+      message: "Document content generated successfully",
+      data: { documentId: updatedDocument.id }
+    }
+  } catch (error) {
+    console.error("Error generating document content from idea:", error)
+    // Set status to failed on error
+    await db
+      .update(documentsTable)
+      .set({ status: "failed" })
+      .where(eq(documentsTable.id, documentId))
+    return {
+      isSuccess: false,
+      message: "Failed to generate document content."
+    }
   }
 }
 
@@ -686,37 +1143,7 @@ Variations:`
       snippets.push(...platformVariations)
     }
 
-    // Save snippets to database if documentId provided
-    if (documentId && snippets.length > 0) {
-      const savePromises = snippets.map(snippet =>
-        createSocialSnippetAction({
-          documentId,
-          originalText: sourceText,
-          platform: snippet.platform,
-          content: snippet.content,
-          characterCount: snippet.characterCount,
-          hashtags: snippet.hashtags,
-          variation: snippet.variation
-        })
-      )
-      
-      // Execute saves in parallel but don't wait for completion
-      Promise.all(savePromises).catch(error => {
-        console.error("Error saving social snippets:", error)
-      })
-
-      // Also save as idea
-      createIdeaAction({
-        documentId,
-        type: "social",
-        title: `Social snippets for: ${sourceText.slice(0, 50)}...`,
-        content: `Generated ${snippets.length} social media variations`,
-        metadata: { platform: platform, characterCount: sourceText.length },
-        tags: ["social-media", "ai-generated"]
-      }).catch(error => {
-        console.error("Error saving social idea:", error)
-      })
-    }
+    // Social snippets are not saved - they're meant to be copied immediately
 
     return {
       isSuccess: true,
@@ -726,5 +1153,207 @@ Variations:`
   } catch (error) {
     console.error("Error generating social snippets:", error)
     return { isSuccess: false, message: "Failed to generate social snippets" }
+  }
+}
+
+/**
+ * Perform enhanced analysis on a document for idea generation.
+ */
+export async function analyzeDocumentForEnhancedIdeasAction(document: {
+  title: string
+  content: string
+  userId: string
+}): Promise<ActionState<EnhancedDocumentAnalysis>> {
+  try {
+    const { userId } = document
+    if (!userId) {
+      return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // 1. Get past documents for context
+    const pastDocsResponse = await analyzePastDocumentsAction(
+      userId,
+      document.content
+    )
+    const pastDocuments = pastDocsResponse.isSuccess ? pastDocsResponse.data : []
+
+    // 2. Prepare prompt for OpenAI
+    const prompt = `
+Analyze the provided document in the context of the user's past work to identify key insights for content ideation.
+
+Current Document:
+Title: ${document.title}
+Content: """
+${document.content.slice(0, 2000)}
+"""
+
+Past Documents:
+${pastDocuments
+  .slice(0, 5)
+  .map(
+    (doc, i) =>
+      `${i + 1}. ${doc.title} (Topics: ${doc.mainTopics.join(", ")}, Themes: ${doc.themes.join(", ")})`
+  )
+  .join("\n")}
+
+Based on this analysis, provide the following in a JSON object:
+1.  **topTopics**: A list of the most frequent topics covered across all documents.
+2.  **themes**: Recurring themes or concepts.
+3.  **contentGaps**: Subjects related to the main topics that have NOT been covered yet.
+4.  **recentTitles**: A list of the last 5 document titles to avoid repetition.
+
+Return a raw JSON object with this exact structure:
+{
+  "analyzedDocuments": [/* simplified list of past docs */],
+  "topTopics": [{ "topic": "string", "count": "number" }],
+  "themes": ["string"],
+  "contentGaps": ["string"],
+  "recentTitles": ["string"]
+}
+`
+
+    // 3. Call OpenAI
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" }
+    })
+
+    const content = response.choices[0]?.message?.content
+    if (!content) {
+      return {
+        isSuccess: false,
+        message: "AI analysis failed to generate a response."
+      }
+    }
+
+    const result: EnhancedDocumentAnalysis = JSON.parse(content)
+
+    // 4. Populate analyzedDocuments with data from pastDocuments
+    result.analyzedDocuments =
+      pastDocuments.map(doc => ({
+        id: doc.id,
+        title: doc.title,
+        content: doc.content,
+        tags: doc.tags,
+        campaignType: doc.campaignType,
+        mainTopics: doc.mainTopics,
+        themes: doc.themes,
+        contentType: doc.contentType,
+        createdAt: doc.createdAt,
+        similarity: doc.similarity
+      })) || []
+
+    result.recentTitles =
+      pastDocuments.slice(0, 5).map(doc => doc.title) || []
+
+    return {
+      isSuccess: true,
+      message: "Enhanced analysis completed successfully.",
+      data: result
+    }
+  } catch (error) {
+    console.error("Error in enhanced document analysis:", error)
+    return {
+      isSuccess: false,
+      message: "An unexpected error occurred during analysis."
+    }
+  }
+}
+
+async function synthesizeCorpusAnalysis(
+  analysis: Awaited<
+    ReturnType<typeof analyzePastDocumentsAction>
+  >["data"]
+): Promise<ActionState<{ corpusSummary: string }>> {
+  if (!analysis || analysis.length === 0) {
+    return {
+      isSuccess: true,
+      message: "No documents to analyze.",
+      data: {
+        corpusSummary:
+          "The user has no documents yet. Please generate general ideas for a writer or content creator."
+      }
+    }
+  }
+
+  try {
+    // Prepare a summary of the documents for the synthesis prompt
+    const documentSummaries = analysis
+      .map(
+        doc =>
+          `Title: ${doc.title}\nThemes: ${doc.themes.join(", ")}\nTopics: ${doc.mainTopics.join(", ")}\n`
+      )
+      .join("\n---\n")
+
+    const prompt = `
+      Analyze the following collection of document summaries to identify overarching themes, topics, and content gaps.
+      Based on this analysis, provide a concise summary of the entire corpus. This summary will be used to generate new content ideas.
+
+      Document Summaries:
+      ${documentSummaries}
+
+      Synthesize this information into a brief "Corpus Summary" that captures the essence of the user's work and potential areas for new content.
+    `
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+      max_tokens: 500
+    })
+
+    const corpusSummary = response.choices[0]?.message?.content?.trim()
+    if (!corpusSummary) {
+      return { isSuccess: false, message: "Failed to synthesize corpus analysis." }
+    }
+
+    return {
+      isSuccess: true,
+      message: "Corpus analysis synthesized successfully.",
+      data: { corpusSummary }
+    }
+  } catch (error) {
+    console.error("Error synthesizing corpus analysis:", error)
+    return { isSuccess: false, message: "Failed to synthesize corpus analysis." }
+  }
+}
+
+export async function generateIdeasFromCorpusAction(
+  ideaType: "headlines" | "topics" | "outlines"
+): Promise<ActionState<GeneratedIdea[]>> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { isSuccess: false, message: "User not authenticated" }
+  }
+
+  // 1. Analyze all past documents
+  const analysisResult = await analyzePastDocumentsAction(userId, "", 50)
+  if (!analysisResult.isSuccess) {
+    return { isSuccess: false, message: "Failed to analyze past documents." }
+  }
+
+  // 2. Synthesize the analysis into a corpus summary
+  const synthesisResult = await synthesizeCorpusAnalysis(analysisResult.data)
+  if (!synthesisResult.isSuccess) {
+    return { isSuccess: false, message: synthesisResult.message }
+  }
+  const { corpusSummary } = synthesisResult.data
+
+  // 3. Generate ideas based on the synthesized summary
+  const generationResult = await generateIdeasAction(
+    corpusSummary,
+    undefined,
+    ideaType
+  )
+
+  if (!generationResult.isSuccess) {
+    return { isSuccess: false, message: "Failed to generate ideas from corpus." }
+  }
+
+  return {
+    isSuccess: true,
+    message: "Ideas generated successfully from your documents!",
+    data: generationResult.data
   }
 } 
