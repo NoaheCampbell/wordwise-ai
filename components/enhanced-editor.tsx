@@ -701,7 +701,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [user, document, title, setProviderIsAnalyzing, reloadDocuments])
 
   useEffect(() => {
-    registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
+    registerSuggestionCallbacks(
+      applySuggestionById,
+      dismissSuggestionById,
+      scrollToHighlight
+    )
     registerGenerateNewIdeas(regenerateEnhancedAnalysis)
   }, [
     registerSuggestionCallbacks,
@@ -1979,6 +1983,137 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       )
     }
   }, [])
+
+  // Scroll to and highlight specific text in the editor
+  const scrollToHighlight = useCallback(
+    (suggestionId: string) => {
+      const highlight = highlights.find(h => h.suggestion.id === suggestionId)
+      if (!highlight || !textareaRef.current) {
+        return
+      }
+
+      // Find the text node and position
+      const textContent = textareaRef.current.innerText || ""
+      const startPos = highlight.start
+      const endPos = highlight.end
+
+      // Create a temporary selection to scroll to the text
+      const selection = window.getSelection()
+      if (!selection) return
+
+      // Find the text node containing our highlight
+      const walker = window.document.createTreeWalker(
+        textareaRef.current,
+        NodeFilter.SHOW_TEXT,
+        null
+      )
+
+      let currentPos = 0
+      let targetNode: Text | null = null
+      let targetOffset = 0
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const nodeLength = node.textContent?.length || 0
+
+        if (currentPos + nodeLength >= startPos) {
+          targetNode = node
+          targetOffset = startPos - currentPos
+          break
+        }
+        currentPos += nodeLength
+      }
+
+      if (targetNode) {
+        // Create a range and select the highlighted text
+        const range = window.document.createRange()
+        range.setStart(targetNode, targetOffset)
+
+        // Find end position
+        let endNode: Text | null = targetNode
+        let endOffset = targetOffset + (endPos - startPos)
+        let remainingLength = endPos - startPos
+        let currentNode = targetNode
+        let currentOffset = targetOffset
+
+        while (remainingLength > 0 && currentNode) {
+          const availableLength =
+            (currentNode.textContent?.length || 0) - currentOffset
+
+          if (remainingLength <= availableLength) {
+            endNode = currentNode
+            endOffset = currentOffset + remainingLength
+            break
+          }
+
+          remainingLength -= availableLength
+          currentOffset = 0
+
+          // Move to next text node
+          walker.currentNode = currentNode
+          const nextNode = walker.nextNode() as Text
+          if (nextNode) {
+            currentNode = nextNode
+          } else {
+            break
+          }
+        }
+
+        if (endNode) {
+          range.setEnd(endNode, endOffset)
+
+          // Clear existing selection and select our range
+          selection.removeAllRanges()
+          selection.addRange(range)
+
+          // Scroll the selected text into view
+          const scrollRect = range.getBoundingClientRect()
+          if (scrollRect.top < 0 || scrollRect.bottom > window.innerHeight) {
+            textareaRef.current.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+              inline: "nearest"
+            })
+          }
+
+          // Add a temporary highlight effect
+          const highlightRect = range.getBoundingClientRect()
+          if (highlightRect.width > 0 && highlightRect.height > 0) {
+            // Create a temporary highlight overlay
+            const overlay = window.document.createElement("div")
+            overlay.style.position = "fixed"
+            overlay.style.left = highlightRect.left + "px"
+            overlay.style.top = highlightRect.top + "px"
+            overlay.style.width = highlightRect.width + "px"
+            overlay.style.height = highlightRect.height + "px"
+            overlay.style.backgroundColor = "rgba(59, 130, 246, 0.3)"
+            overlay.style.borderRadius = "4px"
+            overlay.style.pointerEvents = "none"
+            overlay.style.zIndex = "1000"
+            overlay.style.transition = "opacity 0.5s ease-out"
+
+            window.document.body.appendChild(overlay)
+
+            // Remove the overlay after 2 seconds
+            setTimeout(() => {
+              overlay.style.opacity = "0"
+              setTimeout(() => {
+                if (overlay.parentNode) {
+                  overlay.parentNode.removeChild(overlay)
+                }
+              }, 500)
+            }, 1500)
+          }
+
+          // Clear selection after a brief moment
+          setTimeout(() => {
+            selection.removeAllRanges()
+          }, 100)
+        }
+      }
+    },
+    [highlights]
+  )
 
   const analyzeText = async () => {
     const now = Date.now()

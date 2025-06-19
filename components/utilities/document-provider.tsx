@@ -42,10 +42,12 @@ interface DocumentContextType {
   setCurrentDocumentId: (id: string | null) => void
   registerSuggestionCallbacks: (
     apply: (id: string) => void,
-    dismiss: (id: string) => void
+    dismiss: (id: string) => void,
+    scrollTo?: (id: string) => void
   ) => void
   applySuggestion: (id: string) => void
   dismissSuggestion: (id: string) => void
+  scrollToSuggestion: (id: string) => void
   generateNewIdeas: () => Promise<void>
   registerGenerateNewIdeas: (callback: () => Promise<void>) => void
   highlightPhrase: (phrase: string) => void
@@ -77,7 +79,8 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const suggestionCallbacks = useRef({
     apply: (_id: string) => {},
-    dismiss: (_id: string) => {}
+    dismiss: (_id: string) => {},
+    scrollTo: (_id: string) => {}
   })
 
   const generateIdeasCallback = useRef<() => Promise<void>>(async () => {
@@ -94,8 +97,16 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   )
 
   const registerSuggestionCallbacks = useCallback(
-    (apply: (id: string) => void, dismiss: (id: string) => void) => {
-      suggestionCallbacks.current = { apply, dismiss }
+    (
+      apply: (id: string) => void,
+      dismiss: (id: string) => void,
+      scrollTo?: (id: string) => void
+    ) => {
+      suggestionCallbacks.current = {
+        apply,
+        dismiss,
+        scrollTo: scrollTo || ((_id: string) => {})
+      }
     },
     []
   )
@@ -106,6 +117,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const dismissSuggestion = useCallback((id: string) => {
     suggestionCallbacks.current.dismiss(id)
+  }, [])
+
+  const scrollToSuggestion = useCallback((id: string) => {
+    suggestionCallbacks.current.scrollTo(id)
   }, [])
 
   const generateNewIdeas = useCallback(async () => {
@@ -221,6 +236,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         registerSuggestionCallbacks,
         applySuggestion,
         dismissSuggestion,
+        scrollToSuggestion,
         generateNewIdeas,
         registerGenerateNewIdeas,
         highlightPhrase,
