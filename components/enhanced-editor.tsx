@@ -38,13 +38,17 @@ import {
   improveCTAAction,
   improveBodyContentAction,
   extendContentAction,
-  enhancedRewriteWithToneAction
+  enhancedRewriteWithToneAction,
+  analyzeTextWithContextAction,
+  autoTriggerContextSuggestionsAction
 } from "@/actions/ai-analysis-actions"
 import {
   AISuggestion,
   AnalysisResult,
   SuggestionType,
-  SelectDocument
+  SelectDocument,
+  ContentRegion,
+  ContextAwareAnalysisRequest
 } from "@/types"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
@@ -243,6 +247,26 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   // Research & Ideas state
   const [isResearchPanelOpen, setIsResearchPanelOpen] = useState(false)
   const [isSocialSnippetOpen, setIsSocialSnippetOpen] = useState(false)
+
+  // Context-aware analysis state with localStorage persistence
+  const [contextAwareEnabled, setContextAwareEnabled] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("wordwise-context-aware-enabled")
+      return saved !== null ? JSON.parse(saved) : true
+    }
+    return true
+  })
+  const [autoTriggerEnabled, setAutoTriggerEnabled] = useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("wordwise-auto-trigger-enabled")
+      return saved !== null ? JSON.parse(saved) : true // Default to true
+    }
+    return true // Default to true
+  })
+  const [detectedRegions, setDetectedRegions] = useState<ContentRegion[]>([])
+  const [lastAutoAnalyzedLength, setLastAutoAnalyzedLength] = useState(0)
+  const [autoTriggerTimeout, setAutoTriggerTimeout] =
+    useState<NodeJS.Timeout | null>(null)
 
   const highlights = useMemo(
     () => [...deepHighlights, ...realTimeHighlights],
@@ -677,7 +701,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [user, document, title, setProviderIsAnalyzing, reloadDocuments])
 
   useEffect(() => {
-    registerSuggestionCallbacks(applySuggestionById, dismissSuggestionById)
+    registerSuggestionCallbacks(
+      applySuggestionById,
+      dismissSuggestionById,
+      scrollToHighlight
+    )
     registerGenerateNewIdeas(regenerateEnhancedAnalysis)
   }, [
     registerSuggestionCallbacks,
@@ -1824,18 +1852,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         setDeepHighlights(validHighlights)
         setSuggestions(validHighlights.map(h => h.suggestion))
 
-        // Show toast about loaded suggestions
+        // Log cached suggestions loading (no toast to avoid spam)
         const restoredCount = validHighlights.length
         const totalCount = result.data.length
-        if (restoredCount === totalCount) {
-          toast.info(
-            `Restored ${restoredCount} cached suggestion${restoredCount !== 1 ? "s" : ""}`
-          )
-        } else {
-          toast.info(
-            `Restored ${restoredCount} of ${totalCount} cached suggestions (${totalCount - restoredCount} had invalid positions)`
-          )
-        }
+        console.log(
+          `[Cache] Restored ${restoredCount} of ${totalCount} cached suggestions for document`
+        )
       }
     } catch (error) {
       console.error("Error loading cached suggestions:", error)
@@ -1850,6 +1872,254 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
     await loadCachedSuggestionsForDocument(document.id)
   }
+
+  // Auto-trigger context-aware suggestions on typing pause
+  const handleAutoTriggerSuggestions = useCallback(
+    async (text: string) => {
+      if (!autoTriggerEnabled || !document?.id || isAnalyzing) {
+        return
+      }
+
+      try {
+        const result = await autoTriggerContextSuggestionsAction(
+          text,
+          document.id,
+          lastAutoAnalyzedLength
+        )
+
+        if (result.isSuccess && result.data?.shouldTrigger) {
+          console.log(
+            `[Auto-trigger] Found ${result.data.overallSuggestions.length} suggestions across ${result.data.regions.length} regions`
+          )
+
+          // Update detected regions
+          setDetectedRegions(result.data.regions)
+
+          // Convert to HighlightedText format
+          const usedPositions = new Set<number>()
+          const newHighlights: HighlightedText[] =
+            result.data.overallSuggestions
+              .map(suggestion => {
+                if (
+                  !suggestion.span ||
+                  usedPositions.has(suggestion.span.start)
+                ) {
+                  return null
+                }
+
+                usedPositions.add(suggestion.span.start)
+                return {
+                  id: suggestion.id,
+                  start: suggestion.span.start,
+                  end: suggestion.span.end,
+                  type: suggestion.type,
+                  suggestion
+                }
+              })
+              .filter(Boolean) as HighlightedText[]
+
+          // Update highlights with auto-triggered suggestions
+          setRealTimeHighlights(prev => {
+            const combined = [...prev, ...newHighlights]
+            return deduplicateHighlights(combined)
+          })
+
+          // Update last analyzed length
+          setLastAutoAnalyzedLength(text.length)
+
+          // Show subtle notification
+          if (newHighlights.length > 0) {
+            toast.info(`Auto-detected ${newHighlights.length} suggestions`, {
+              duration: 2000
+            })
+          }
+        }
+      } catch (error) {
+        console.error("Error in auto-trigger suggestions:", error)
+      }
+    },
+    [autoTriggerEnabled, document?.id, isAnalyzing, lastAutoAnalyzedLength]
+  )
+
+  // Debounced auto-trigger function
+  const debouncedAutoTrigger = useCallback(
+    (text: string) => {
+      if (autoTriggerTimeout) {
+        clearTimeout(autoTriggerTimeout)
+      }
+
+      const timeout = setTimeout(() => {
+        handleAutoTriggerSuggestions(text)
+      }, 3000) // 3 second pause before triggering
+
+      setAutoTriggerTimeout(timeout)
+    },
+    [autoTriggerTimeout, handleAutoTriggerSuggestions]
+  )
+
+  // Save settings to localStorage when they change
+  const handleContextAwareToggle = useCallback((enabled: boolean) => {
+    setContextAwareEnabled(enabled)
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        "wordwise-context-aware-enabled",
+        JSON.stringify(enabled)
+      )
+    }
+  }, [])
+
+  const handleAutoTriggerToggle = useCallback((enabled: boolean) => {
+    setAutoTriggerEnabled(enabled)
+    if (typeof window !== "undefined") {
+      localStorage.setItem(
+        "wordwise-auto-trigger-enabled",
+        JSON.stringify(enabled)
+      )
+    }
+  }, [])
+
+  // Scroll to and highlight specific text in the editor
+  const scrollToHighlight = useCallback(
+    (suggestionId: string) => {
+      const highlight = highlights.find(h => h.suggestion.id === suggestionId)
+      if (!highlight || !textareaRef.current) {
+        return
+      }
+
+      // Find the text node and position
+      const textContent = textareaRef.current.innerText || ""
+      const startPos = highlight.start
+      const endPos = highlight.end
+
+      // Create a temporary selection to scroll to the text
+      const selection = window.getSelection()
+      if (!selection) return
+
+      // Find the text node containing our highlight
+      const walker = window.document.createTreeWalker(
+        textareaRef.current,
+        NodeFilter.SHOW_TEXT,
+        null
+      )
+
+      let currentPos = 0
+      let targetNode: Text | null = null
+      let targetOffset = 0
+
+      while (walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const nodeLength = node.textContent?.length || 0
+
+        if (currentPos + nodeLength >= startPos) {
+          targetNode = node
+          targetOffset = startPos - currentPos
+          break
+        }
+        currentPos += nodeLength
+      }
+
+      if (targetNode) {
+        // Create a range and select the highlighted text
+        const range = window.document.createRange()
+        range.setStart(targetNode, targetOffset)
+
+        // Find end position
+        let endNode: Text | null = targetNode
+        let endOffset = targetOffset + (endPos - startPos)
+        let remainingLength = endPos - startPos
+        let currentNode = targetNode
+        let currentOffset = targetOffset
+
+        while (remainingLength > 0 && currentNode) {
+          const availableLength =
+            (currentNode.textContent?.length || 0) - currentOffset
+
+          if (remainingLength <= availableLength) {
+            endNode = currentNode
+            endOffset = currentOffset + remainingLength
+            break
+          }
+
+          remainingLength -= availableLength
+          currentOffset = 0
+
+          // Move to next text node
+          walker.currentNode = currentNode
+          const nextNode = walker.nextNode() as Text
+          if (nextNode) {
+            currentNode = nextNode
+          } else {
+            break
+          }
+        }
+
+        if (endNode) {
+          range.setEnd(endNode, endOffset)
+
+          // Clear existing selection and select our range
+          selection.removeAllRanges()
+          selection.addRange(range)
+
+          // Scroll the selected text into view
+          const scrollRect = range.getBoundingClientRect()
+          if (scrollRect.top < 0 || scrollRect.bottom > window.innerHeight) {
+            textareaRef.current.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+              inline: "nearest"
+            })
+          }
+
+          // Add subtle highlight effect to draw attention
+          const highlightRect = range.getBoundingClientRect()
+          if (highlightRect.width > 0 && highlightRect.height > 0) {
+            // Create a simple, subtle highlight overlay
+            const overlay = window.document.createElement("div")
+            overlay.style.position = "fixed"
+            overlay.style.left = highlightRect.left - 2 + "px"
+            overlay.style.top = highlightRect.top - 2 + "px"
+            overlay.style.width = highlightRect.width + 4 + "px"
+            overlay.style.height = highlightRect.height + 4 + "px"
+            overlay.style.backgroundColor = "rgba(59, 130, 246, 0.15)"
+            overlay.style.border = "2px solid rgba(59, 130, 246, 0.4)"
+            overlay.style.borderRadius = "6px"
+            overlay.style.pointerEvents = "none"
+            overlay.style.zIndex = "1000"
+            overlay.style.transition = "opacity 0.3s ease-out"
+
+            window.document.body.appendChild(overlay)
+
+            // Brief flash effect - slightly brighter for 200ms then fade to normal
+            setTimeout(() => {
+              overlay.style.backgroundColor = "rgba(59, 130, 246, 0.25)"
+              overlay.style.borderColor = "rgba(59, 130, 246, 0.6)"
+            }, 50)
+
+            setTimeout(() => {
+              overlay.style.backgroundColor = "rgba(59, 130, 246, 0.15)"
+              overlay.style.borderColor = "rgba(59, 130, 246, 0.4)"
+            }, 250)
+
+            // Remove the overlay after 2 seconds
+            setTimeout(() => {
+              overlay.style.opacity = "0"
+              setTimeout(() => {
+                if (overlay.parentNode) {
+                  overlay.parentNode.removeChild(overlay)
+                }
+              }, 300)
+            }, 2000)
+          }
+
+          // Clear selection after a brief moment
+          setTimeout(() => {
+            selection.removeAllRanges()
+          }, 100)
+        }
+      }
+    },
+    [highlights]
+  )
 
   const analyzeText = async () => {
     const now = Date.now()
@@ -1938,13 +2208,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
       // STEP 4: Run the analysis
       console.log("[Analysis Debug] Starting AI analysis...")
-      const action = useParallelAnalysis
-        ? analyzeTextInParallelAction
-        : analyzeTextAction
 
       let result
-      if (action === analyzeTextAction) {
-        result = await analyzeTextAction(
+      if (contextAwareEnabled) {
+        // Use context-aware analysis
+        console.log("[Analysis Debug] Using context-aware analysis")
+        result = await analyzeTextWithContextAction(
           {
             text: contentRef.current,
             analysisTypes: [
@@ -1953,26 +2222,49 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               "clarity",
               "conciseness",
               "passive-voice"
-            ]
+            ],
+            enableContextAware: true
           },
           document?.id,
           true // saveSuggestions
         )
       } else {
-        result = await action(
-          {
-            text: contentRef.current,
-            analysisTypes: [
-              "grammar",
-              "spelling",
-              "clarity",
-              "conciseness",
-              "passive-voice"
-            ]
-          },
-          document?.id,
-          true // saveSuggestions
-        )
+        // Use regular analysis
+        const action = useParallelAnalysis
+          ? analyzeTextInParallelAction
+          : analyzeTextAction
+
+        if (action === analyzeTextAction) {
+          result = await analyzeTextAction(
+            {
+              text: contentRef.current,
+              analysisTypes: [
+                "grammar",
+                "spelling",
+                "clarity",
+                "conciseness",
+                "passive-voice"
+              ]
+            },
+            document?.id,
+            true // saveSuggestions
+          )
+        } else {
+          result = await action(
+            {
+              text: contentRef.current,
+              analysisTypes: [
+                "grammar",
+                "spelling",
+                "clarity",
+                "conciseness",
+                "passive-voice"
+              ]
+            },
+            document?.id,
+            true // saveSuggestions
+          )
+        }
       }
 
       // STEP 5: Process results with enhanced validation
@@ -1982,6 +2274,18 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         )
 
         setHasManuallyEdited(false)
+
+        // Update detected regions if context-aware analysis was used
+        if (
+          contextAwareEnabled &&
+          "regions" in result.data &&
+          Array.isArray((result.data as any).regions)
+        ) {
+          setDetectedRegions((result.data as any).regions)
+          console.log(
+            `[Analysis Debug] Detected ${(result.data as any).regions.length} content regions`
+          )
+        }
 
         // Enhanced suggestion processing with better error handling
         const processedHighlights: HighlightedText[] = []
@@ -2137,6 +2441,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     contentRef.current = newContent
     setContentForWordCount(newContent)
     setCurrentContent(newContent) // Update provider with current content
+
+    // Trigger auto-suggestions if enabled
+    if (autoTriggerEnabled) {
+      debouncedAutoTrigger(newContent)
+    }
     setHasManuallyEdited(true)
     lastContentLength.current = newLength
 
@@ -2429,6 +2738,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
     return () => {
       window.document.removeEventListener("keydown", handleEscape)
+      // Clean up auto-trigger timeout
+      if (autoTriggerTimeout) {
+        clearTimeout(autoTriggerTimeout)
+      }
     }
   }, [selectedSuggestion])
 
@@ -2512,6 +2825,26 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     />
                     <Label htmlFor="parallel-analysis" className="text-sm">
                       Parallel Analysis
+                    </Label>
+                  </div>
+                  <div className="mt-2 flex items-center space-x-2">
+                    <Switch
+                      id="context-aware"
+                      checked={contextAwareEnabled}
+                      onCheckedChange={handleContextAwareToggle}
+                    />
+                    <Label htmlFor="context-aware" className="text-sm">
+                      Context-Aware Analysis
+                    </Label>
+                  </div>
+                  <div className="mt-2 flex items-center space-x-2">
+                    <Switch
+                      id="auto-trigger"
+                      checked={autoTriggerEnabled}
+                      onCheckedChange={handleAutoTriggerToggle}
+                    />
+                    <Label htmlFor="auto-trigger" className="text-sm">
+                      Auto-Trigger on Pause
                     </Label>
                   </div>
                   {document?.id && (
@@ -2831,24 +3164,50 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
-        <div className="flex items-center gap-4 text-xs">
-          <span className="font-medium text-gray-600">Legend:</span>
-          <div className="flex items-center gap-1">
-            <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
-            <span className="text-gray-600">Grammar/Spelling</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-4 text-xs">
+            <span className="font-medium text-gray-600">Legend:</span>
+            <div className="flex items-center gap-1">
+              <div className="size-3 rounded-sm border-b-2 border-red-400 bg-red-200"></div>
+              <span className="text-gray-600">Grammar/Spelling</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
+              <span className="text-gray-600">Clarity</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
+              <span className="text-gray-600">Conciseness</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
+              <span className="text-gray-600">Passive Voice</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
-            <div className="size-3 rounded-sm border-b-2 border-blue-400 bg-blue-200"></div>
-            <span className="text-gray-600">Clarity</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="size-3 rounded-sm border-b-2 border-orange-400 bg-orange-200"></div>
-            <span className="text-gray-600">Conciseness</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="size-3 rounded-sm border-b-2 border-purple-400 bg-purple-200"></div>
-            <span className="text-gray-600">Passive Voice</span>
-          </div>
+          {contextAwareEnabled && detectedRegions.length > 0 && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-medium text-gray-700">
+                Detected Regions:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {Array.from(new Set(detectedRegions.map(r => r.type))).map(
+                  regionType => (
+                    <Badge
+                      key={regionType}
+                      variant="secondary"
+                      className="border-blue-200 bg-blue-100 text-xs text-blue-800 hover:bg-blue-200"
+                    >
+                      {regionType === "subject" && "📧"}
+                      {regionType === "intro" && "🎯"}
+                      {regionType === "cta" && "🚀"}
+                      {regionType === "body" && "📝"}
+                      {regionType === "closing" && "👋"} {regionType}
+                    </Badge>
+                  )
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

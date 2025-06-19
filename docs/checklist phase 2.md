@@ -59,17 +59,17 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 
 ---
 
-## Phase 3 – Contextual Feedback System
-### 3.1 Context-Aware Suggestions  
-- [ ] Detect region (subject, intro, CTA)  
-- [ ] Adjust prompts per region  
-- [ ] Trigger on typing-pause **or** manual “Check”  
+## Phase 3 – Contextual Feedback System ✅ COMPLETED
+### 3.1 Context-Aware Suggestions ✅ COMPLETED  
+- [x] Detect region (subject, intro, CTA)  
+- [x] Adjust prompts per region  
+- [x] Trigger on typing-pause **or** manual "Check"  
 
 ### 3.2 Inferred Improvements (Auto)  
-- [ ] Auto-offer clarity / CTA / hook rewrites  
-- [ ] Tag suggestions by type  
-- [ ] Show rationale (“Make this CTA more actionable”)  
-- [ ] Smooth accept / reject UI  
+- [x] Auto-offer clarity / CTA / hook rewrites  
+- [x] Tag suggestions by type  
+- [x] Show rationale ("Make this CTA more actionable")  
+- [x] Smooth accept / reject UI  
 
 ---
 
@@ -87,8 +87,8 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 ### 4.3 Engagement Heat-Map Import  
 • Connect ESP API (e.g., Mailchimp/ConvertKit) → fetch last issue click-map JSON  
 • Map URL anchors to positions in current draft  
-• Overlay “hot” (🟢) and “cold” (🔴) badges inline  
-• Tooltip shows click-thru % and quick-edit prompt (“Rewrite cold section”)  
+• Overlay "hot" (🟢) and "cold" (🔴) badges inline  
+• Tooltip shows click-thru % and quick-edit prompt ("Rewrite cold section")  
 • Cache heat-map data locally for offline review  
 • Toggle overlay on/off in toolbar
 
@@ -115,27 +115,27 @@ This document breaks the Phase 2 roadmap into clear **Phases → Features → Su
 - [ ] Allows user to allow or disallow certain sources   
 
 ### 5B.2 Past-Issue Analyzer  
-- [ ] Build vector store of user’s past newsletters (title, tags, embeddings)  
-- [ ] Provide semantic search UI (“find issues about deliverability”)  
+- [ ] Build vector store of user's past newsletters (title, tags, embeddings)  
+- [ ] Provide semantic search UI ("find issues about deliverability")  
 
 ### 5B.3 Idea Generator  
 - [ ] GPT compares current topics vs past coverage  
 - [ ] Output 3 headline ideas + short outlines for future issues  
-- [ ] “Save Idea” button writes to `ideas` table (Supabase)  
+- [ ] "Save Idea" button writes to `ideas` table (Supabase)  
 
 ### 5B.4 Research Panel UI  
 - [ ] Collapsible sidebar with **Sources** / **Ideas** tabs  
-- [ ] “Insert citation” button drops link inline  
+- [ ] "Insert citation" button drops link inline  
 - [ ] Mobile-friendly layout, resizable width  
 
 ### 5B.5  **Social Snippet Generator** 
-- [x] **Select excerpt → “Create Social Post”** action in toolbar  
+- [x] **Select excerpt → "Create Social Post"** action in toolbar  
 - [x] GPT prompt variants for:  
   - [x] Tweet (≤280 chars, 1–2 hashtags)  
   - [x] LinkedIn (conv-style, call-to-comment)  
   - [x] Instagram caption (≤2200 chars, emoji + 3–5 hashtags)  
 - [x] Option to regenerate / cycle through 3 variations  
-- [x] “Copy to clipboard” + toast confirmation  
+- [x] "Copy to clipboard" + toast confirmation  
 - [x] Log snippet generation event (`idea_type = 'social'`) in `ideas` table  
 
 *(Effort: ≈0.5 dev-day—reuses existing GPT handler & idea panel UI)*

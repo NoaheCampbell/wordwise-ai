@@ -48,6 +48,7 @@ export interface AISuggestion {
   span?: TextSpan
   confidence: number
   icon: string
+  region?: "subject" | "intro" | "body" | "cta" | "closing"
 }
 
 export interface AnalysisResult {
@@ -59,4 +60,16 @@ export interface AnalysisResult {
 export interface AnalyzeTextRequest {
   text: string
   analysisTypes: SuggestionType[]
+}
+
+export interface ContextAwareAnalysisRequest extends AnalyzeTextRequest {
+  enableContextAware?: boolean
+}
+
+export interface ContentRegion {
+  type: "subject" | "intro" | "body" | "cta" | "closing"
+  start: number
+  end: number
+  text: string
+  confidence: number
 }

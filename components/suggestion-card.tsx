@@ -11,10 +11,14 @@ interface SuggestionCardProps {
 }
 
 export function SuggestionCard({ suggestion }: SuggestionCardProps) {
-  const { applySuggestion, dismissSuggestion } = useDocument()
+  const { applySuggestion, dismissSuggestion, scrollToSuggestion } =
+    useDocument()
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+    <div
+      className="cursor-pointer rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50"
+      onClick={() => scrollToSuggestion(suggestion.id)}
+    >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{suggestion.icon}</span>
@@ -52,7 +56,10 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
 
       <div className="mt-4 flex gap-2">
         <Button
-          onClick={() => applySuggestion(suggestion.id)}
+          onClick={e => {
+            e.stopPropagation()
+            applySuggestion(suggestion.id)
+          }}
           size="sm"
           className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
         >
@@ -62,7 +69,10 @@ export function SuggestionCard({ suggestion }: SuggestionCardProps) {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => dismissSuggestion(suggestion.id)}
+          onClick={e => {
+            e.stopPropagation()
+            dismissSuggestion(suggestion.id)
+          }}
           className="flex-1"
         >
           <X className="mr-2 size-4" />
