@@ -2868,41 +2868,100 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
       {selectedSuggestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <Card className="w-full max-w-md">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold">
-                Suggestion: {selectedSuggestion.type}
-              </h3>
-              <p className="mt-2 text-sm text-gray-600">
-                Original:{" "}
-                <span className="font-mono text-red-500">
-                  {selectedSuggestion.originalText}
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex size-12 items-center justify-center rounded-full bg-blue-100">
+                <span className="text-xl">
+                  {selectedSuggestion.type === "spelling"
+                    ? "💡"
+                    : selectedSuggestion.type === "grammar"
+                      ? "💡"
+                      : selectedSuggestion.type === "clarity"
+                        ? "💡"
+                        : selectedSuggestion.type === "conciseness"
+                          ? "💡"
+                          : selectedSuggestion.type === "passive-voice"
+                            ? "💡"
+                            : selectedSuggestion.type === "tone"
+                              ? "💡"
+                              : selectedSuggestion.type === "cta"
+                                ? "💡"
+                                : "💡"}
                 </span>
-              </p>
-              <p className="mt-2 text-sm text-gray-600">
-                Suggestion:{" "}
-                <span className="font-mono text-green-500">
-                  {selectedSuggestion.suggestedText}
-                </span>
-              </p>
-              <p className="mt-4 text-sm">{selectedSuggestion.description}</p>
-              <div className="mt-6 flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => dismissSuggestionById(selectedSuggestion.id)}
-                >
-                  <X className="mr-2 size-4" />
-                  Dismiss
-                </Button>
-                <Button
-                  onClick={() => applySuggestionById(selectedSuggestion.id)}
-                >
-                  <Check className="mr-2 size-4" />
-                  Apply
-                </Button>
               </div>
-            </CardContent>
-          </Card>
+              <div className="flex-1">
+                <h3 className="text-xl font-semibold text-gray-900">
+                  {selectedSuggestion.type === "spelling"
+                    ? "Spelling Correction"
+                    : selectedSuggestion.type === "grammar"
+                      ? "Grammar Fix"
+                      : selectedSuggestion.type === "clarity"
+                        ? "Clarity Improvement"
+                        : selectedSuggestion.type === "conciseness"
+                          ? "Conciseness"
+                          : selectedSuggestion.type === "passive-voice"
+                            ? "Active Voice"
+                            : selectedSuggestion.type === "tone"
+                              ? "Tone Adjustment"
+                              : selectedSuggestion.type === "cta"
+                                ? "CTA Enhancement"
+                                : "Suggestion"}
+                </h3>
+                <div className="mt-1">
+                  <Badge variant="outline" className="text-xs">
+                    {selectedSuggestion.type}
+                  </Badge>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedSuggestion(null)}
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            <p className="mb-6 text-gray-700">
+              {selectedSuggestion.description}
+            </p>
+
+            <div className="mb-6 space-y-4">
+              <div>
+                <p className="mb-2 font-semibold text-gray-900">Original:</p>
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 font-mono text-sm text-gray-800">
+                  {selectedSuggestion.originalText}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 font-semibold text-gray-900">Suggested:</p>
+                <div className="rounded-lg border border-green-200 bg-green-50 p-4 font-mono text-sm text-gray-800">
+                  {selectedSuggestion.suggestedText}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => dismissSuggestionById(selectedSuggestion.id)}
+                className="flex-1 border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                Dismiss
+              </Button>
+              <Button
+                onClick={() => applySuggestionById(selectedSuggestion.id)}
+                className="flex-1 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <Check className="mr-2 size-4" />
+                Apply
+              </Button>
+            </div>
+
+            <p className="mt-4 text-center text-sm text-gray-500">
+              100% confidence
+            </p>
+          </div>
         </div>
       )}
 
