@@ -756,145 +756,6 @@ export async function saveIdeaAction(
 /**
  * Convert an idea into a new document with recommended sources
  */
-// Quick enhanced content generation (synchronous, no AI calls)
-function generateQuickEnhancedContent(
-  ideaTitle: string,
-  ideaContent: string,
-  ideaType: string
-): string {
-  if (ideaType === "headline") {
-    return `# ${ideaTitle}
-
-## Introduction
-${ideaContent}
-
-## Key Points
-- [Add your main arguments and insights here]
-- [Supporting evidence or examples]
-- [Additional key points]
-
-## Evidence & Research
-[Add credible sources, statistics, expert quotes, or case studies]
-
-## Implications
-[Discuss what this means for your audience - why should they care?]
-
-## Conclusion
-[Tie everything together and reinforce the main message]
-
-## Call to Action
-[What do you want readers to do after reading this?]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else if (ideaType === "topic_suggestion") {
-    return `# ${ideaTitle}
-
-## Executive Summary
-${ideaContent}
-
-## Background & Context
-[Historical context, current state, why this topic matters now]
-
-## Key Themes & Trends
-### Theme 1: [Insert Theme]
-[Analysis of first major theme]
-
-### Theme 2: [Insert Theme]  
-[Analysis of second major theme]
-
-### Theme 3: [Insert Theme]
-[Analysis of third major theme]
-
-## Stakeholders & Perspectives
-### Primary Stakeholders
-- [Who is most affected by this topic?]
-- [What are their interests and concerns?]
-
-### Secondary Stakeholders
-- [Who else has a stake in this topic?]
-- [How might they be impacted?]
-
-## Current Challenges & Opportunities
-### Challenges
-- [Major obstacle #1]
-- [Major obstacle #2]
-- [Major obstacle #3]
-
-### Opportunities
-- [Potential solution or opportunity #1]
-- [Potential solution or opportunity #2]
-- [Potential solution or opportunity #3]
-
-## Future Outlook
-[Where is this topic heading? What changes do you anticipate?]
-
-## Recommendations
-1. [Actionable recommendation #1]
-2. [Actionable recommendation #2]
-3. [Actionable recommendation #3]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else if (ideaType === "outline") {
-    return `# ${ideaTitle}
-
-## Initial Framework
-${ideaContent}
-
-## Detailed Structure
-
-### Section 1: [Title]
-[Develop the first major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-### Section 2: [Title]  
-[Develop the second major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-### Section 3: [Title]
-[Develop the third major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-## Research Requirements
-[What information do you need to gather to support this outline?]
-
-## Next Steps
-1. [First development priority]
-2. [Second development priority]
-3. [Third development priority]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else {
-    return `# ${ideaTitle}
-
-${ideaContent}
-
-## Development Notes
-[Use this space to expand on your initial idea]
-
-## Research & Evidence
-[Add supporting information, sources, and data]
-
-## Next Steps
-[What actions need to be taken to develop this further?]
-
----
-*Research sources will be automatically added below as you find them.*`
-  }
-}
-
-/**
- * Creates a document from an idea.
- * This just creates the entry in the database. The content generation is handled by another action.
- */
 export async function convertIdeaToDocumentAction(
   ideaId: string,
   ideaTitle: string
@@ -935,7 +796,7 @@ export async function convertIdeaToDocumentAction(
 }
 
 /**
- * Generates the full content for a document that was created from an idea.
+ * Generate a document from an idea, including finding relevant articles.
  */
 export async function generateDocumentFromIdeaAction(
   documentId: string,
@@ -949,52 +810,91 @@ export async function generateDocumentFromIdeaAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    // 1. Generate the actual content
-    const generatedContent = generateQuickEnhancedContent(
-      ideaTitle,
-      ideaContent,
-      ideaType
+    // 1. Extract keywords from the idea
+    const keywordPrompt = `Extract 5-7 relevant keywords from the following title and content for a web search. Return as a JSON object with a "keywords" key containing an array of strings: {"keywords": ["keyword1", "keyword2"]}.\n\nTitle: ${ideaTitle}\nContent: ${ideaContent}`
+    const keywordResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: keywordPrompt }],
+      response_format: { type: "json_object" }
+    })
+    const responseJson = JSON.parse(
+      keywordResponse.choices[0]?.message?.content || "{}"
     )
+    const keywords = responseJson.keywords || []
 
-    // 2. Update the document with the new content and status
-    const [updatedDocument] = await db
-      .update(documentsTable)
-      .set({
-        content: generatedContent,
-        status: "complete",
-        updatedAt: new Date()
-      })
-      .where(eq(documentsTable.id, documentId))
-      .returning({ id: documentsTable.id })
-
-    if (!updatedDocument) {
-      await db
-        .update(documentsTable)
-        .set({ status: "failed" })
-        .where(eq(documentsTable.id, documentId))
-      return { isSuccess: false, message: "Failed to update document content." }
+    if (!Array.isArray(keywords)) {
+      throw new Error("Keywords from AI is not an array.")
     }
 
-    // 3. Delete the original idea (optional, but good for cleanup)
-    // We are not deleting the idea anymore to keep it for user's reference
-    // await db.delete(ideasTable).where(eq(ideasTable.id, ideaId));
+    // 2. Find relevant articles
+    const articlesResult = await findRelevantArticlesAction(keywords, documentId)
+    const articles = articlesResult.isSuccess ? articlesResult.data : []
+
+    // 3. Generate document content using the idea and articles
+    const contentPrompt = `
+You are an expert writer. Write a comprehensive document based on the following idea and research articles.
+The document should be well-structured, informative, and engaging.
+Use the provided articles as a basis for the content, summarizing and synthesizing their information.
+Make sure to cite the articles appropriately using markdown links, for example: [Source 1](https://example.com).
+
+**Idea Title:** ${ideaTitle}
+**Idea Details:** ${ideaContent}
+**Idea Type:** ${ideaType}
+
+**Research Articles:**
+${articles
+  .map(
+    (article, index) =>
+      `${index + 1}. ${article.title} - ${article.summary}\nURL: ${article.url}`
+  )
+  .join("\n\n")}
+
+Generate the full document content now.
+`
+
+    const contentResponse = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: contentPrompt }],
+      temperature: 0.7,
+      max_tokens: 4000
+    })
+
+    const finalContent = contentResponse.choices[0]?.message?.content || ""
+
+    await db
+      .update(documentsTable)
+      .set({
+        content: finalContent,
+        status: documentStatusEnum.enumValues[1] // complete
+      })
+      .where(eq(documentsTable.id, documentId))
+
+    // Save the research sources
+    if (articles.length > 0) {
+      for (const article of articles) {
+        await createResearchSourceAction({
+          documentId: documentId,
+          title: article.title,
+          url: article.url,
+          summary: article.summary
+        })
+      }
+    }
 
     return {
       isSuccess: true,
-      message: "Document content generated successfully",
-      data: { documentId: updatedDocument.id }
+      message: "Document generated successfully",
+      data: { documentId }
     }
   } catch (error) {
-    console.error("Error generating document content from idea:", error)
-    // Set status to failed on error
+    console.error("Error generating document from idea:", error)
     await db
       .update(documentsTable)
-      .set({ status: "failed" })
+      .set({
+        status: documentStatusEnum.enumValues[2] // failed
+      })
       .where(eq(documentsTable.id, documentId))
-    return {
-      isSuccess: false,
-      message: "Failed to generate document content."
-    }
+    return { isSuccess: false, message: "Failed to generate document" }
   }
 }
 
@@ -1356,4 +1256,4 @@ export async function generateIdeasFromCorpusAction(
     message: "Ideas generated successfully from your documents!",
     data: generationResult.data
   }
-} 
+}
