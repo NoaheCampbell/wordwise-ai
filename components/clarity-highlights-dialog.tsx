@@ -49,13 +49,13 @@ export function ClarityHighlightsDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-3xl bg-slate-50">
+      <DialogContent className="max-h-[80vh] max-w-3xl overflow-y-auto bg-slate-50">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3 pb-2">
+          <DialogTitle className="flex items-center gap-3">
             <div className="flex items-center gap-3">
               <Badge
                 variant="outline"
-                className={`px-3 py-1 text-xl font-bold ${
+                className={`px-3 py-1 text-lg font-bold ${
                   scoreColor === "green"
                     ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                     : scoreColor === "amber"
@@ -72,31 +72,31 @@ export function ClarityHighlightsDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-8">
+        <div className="space-y-4">
           {/* Explanation */}
-          <div className="rounded-lg bg-white p-6 shadow-sm">
-            <h3 className="mb-4 text-base font-semibold text-slate-800">
+          <div className="rounded-lg bg-white p-4 shadow-sm">
+            <h3 className="mb-2 text-sm font-semibold text-slate-800">
               Analysis
             </h3>
-            <p className="text-base leading-7 text-slate-600">
+            <p className="text-sm leading-6 text-slate-600">
               {clarityScore.explanation}
             </p>
           </div>
 
           {/* Highlights */}
           {clarityScore.highlights.length > 0 && (
-            <div className="rounded-lg bg-white p-6 shadow-sm">
-              <h3 className="mb-5 text-base font-semibold text-slate-800">
+            <div className="rounded-lg bg-white p-4 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold text-slate-800">
                 Phrases that could be clearer:
               </h3>
-              <div className="space-y-4">
+              <div className="space-y-2">
                 {clarityScore.highlights.map((highlight, index) => (
                   <div
                     key={index}
-                    className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition-colors hover:bg-slate-100"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-base leading-6 text-slate-700 shadow-sm">
+                      <p className="rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-sm text-slate-700 shadow-sm">
                         "{highlight}"
                       </p>
                     </div>
@@ -107,7 +107,7 @@ export function ClarityHighlightsDialog({
                         onClick={() => onRewriteHighlight(highlight)}
                         className="shrink-0 border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100"
                       >
-                        <Sparkles className="mr-2 size-4" />
+                        <Sparkles className="mr-1 size-3" />
                         Make Clearer
                       </Button>
                     )}
@@ -118,36 +118,36 @@ export function ClarityHighlightsDialog({
           )}
 
           {/* Score Scale Reference */}
-          <div className="rounded-lg bg-white p-6 shadow-sm">
-            <h3 className="mb-5 text-base font-semibold text-slate-800">
+          <div className="rounded-lg bg-white p-4 shadow-sm">
+            <h3 className="mb-3 text-sm font-semibold text-slate-800">
               Clarity Scale
             </h3>
-            <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+            <div className="space-y-1 text-xs">
+              <div className="flex items-center justify-between rounded-md bg-emerald-50 px-2 py-1">
                 <span className="font-semibold text-emerald-800">90-100</span>
                 <span className="text-slate-700">
                   Crystal clear – concise, no ambiguity, smooth flow
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-md bg-green-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-green-50 px-2 py-1">
                 <span className="font-semibold text-green-700">75-89</span>
                 <span className="text-slate-700">
                   Quite clear – minor verbosity or jargon
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-amber-50 px-2 py-1">
                 <span className="font-semibold text-amber-700">60-74</span>
                 <span className="text-slate-700">
                   Mixed clarity – several long/complex sentences
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-orange-50 px-2 py-1">
                 <span className="font-semibold text-orange-700">40-59</span>
                 <span className="text-slate-700">
                   Hard to follow – frequent wordiness, passive overload
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-md bg-rose-50 px-3 py-2">
+              <div className="flex items-center justify-between rounded-md bg-rose-50 px-2 py-1">
                 <span className="font-semibold text-rose-700">0-39</span>
                 <span className="text-slate-700">
                   Very unclear – dense, confusing, poorly structured
