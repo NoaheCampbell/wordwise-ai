@@ -258,17 +258,6 @@ export default function DocumentPage() {
       <div className="flex min-h-screen w-full bg-gray-50">
         <DocumentSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
-          <TopNav>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDeleteAlert(true)}
-            >
-              <Trash2 className="mr-2 size-4" />
-              Delete
-            </Button>
-          </TopNav>
-
           {/* Email verification banner */}
           <div className="px-6 pt-4">
             <EmailVerificationBanner />
@@ -295,16 +284,13 @@ export default function DocumentPage() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the
-              document and remove all associated data.
+              document and all its associated data.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
-            >
+            <AlertDialogAction onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 className="mr-2 size-4" />
               {isDeleting ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -2722,28 +2722,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="fixed bottom-4 right-4">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="secondary" size="icon">
-              <Settings className="size-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuLabel>Editor Settings</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <div className="flex items-center justify-between p-2">
-              <Label htmlFor="parallel-analysis">Parallel Analysis</Label>
-              <Switch
-                id="parallel-analysis"
-                checked={useParallelAnalysis}
-                onCheckedChange={setUseParallelAnalysis}
-              />
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
       {document && (
         <DocumentShareDialog
           document={document}
