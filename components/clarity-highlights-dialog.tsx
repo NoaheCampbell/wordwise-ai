@@ -49,54 +49,54 @@ export function ClarityHighlightsDialog({
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl bg-slate-50">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-3 pb-2">
+            <div className="flex items-center gap-3">
               <Badge
                 variant="outline"
-                className={`text-lg font-bold ${
+                className={`px-3 py-1 text-xl font-bold ${
                   scoreColor === "green"
-                    ? "border-green-500 bg-green-50 text-green-700"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                     : scoreColor === "amber"
-                      ? "border-amber-500 bg-amber-50 text-amber-700"
-                      : "border-red-500 bg-red-50 text-red-700"
+                      ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : "border-rose-300 bg-rose-50 text-rose-700"
                 }`}
               >
                 {clarityScore.score}/100
               </Badge>
-              <span className="text-base font-medium text-gray-600">
+              <span className="text-lg font-medium text-slate-700">
                 {getScoreDescription(clarityScore.score)}
               </span>
             </div>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* Explanation */}
-          <div>
-            <h3 className="mb-2 text-sm font-semibold text-gray-700">
+          <div className="rounded-lg bg-white p-6 shadow-sm">
+            <h3 className="mb-4 text-base font-semibold text-slate-800">
               Analysis
             </h3>
-            <p className="text-sm leading-relaxed text-gray-600">
+            <p className="text-base leading-7 text-slate-600">
               {clarityScore.explanation}
             </p>
           </div>
 
           {/* Highlights */}
           {clarityScore.highlights.length > 0 && (
-            <div>
-              <h3 className="mb-3 text-sm font-semibold text-gray-700">
-                Phrases that reduce clarity:
+            <div className="rounded-lg bg-white p-6 shadow-sm">
+              <h3 className="mb-5 text-base font-semibold text-slate-800">
+                Phrases that could be clearer:
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {clarityScore.highlights.map((highlight, index) => (
                   <div
                     key={index}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3"
+                    className="flex items-start justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 transition-colors hover:bg-slate-100"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="rounded border bg-white px-2 py-1 font-mono text-sm text-gray-800">
+                      <p className="rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-base leading-6 text-slate-700 shadow-sm">
                         "{highlight}"
                       </p>
                     </div>
@@ -105,9 +105,9 @@ export function ClarityHighlightsDialog({
                         size="sm"
                         variant="outline"
                         onClick={() => onRewriteHighlight(highlight)}
-                        className="shrink-0 hover:border-blue-300 hover:bg-blue-50"
+                        className="shrink-0 border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100"
                       >
-                        <Sparkles className="mr-1 size-3" />
+                        <Sparkles className="mr-2 size-4" />
                         Make Clearer
                       </Button>
                     )}
@@ -118,38 +118,38 @@ export function ClarityHighlightsDialog({
           )}
 
           {/* Score Scale Reference */}
-          <div className="rounded-lg bg-gray-50 p-4">
-            <h3 className="mb-3 text-sm font-semibold text-gray-700">
+          <div className="rounded-lg bg-white p-6 shadow-sm">
+            <h3 className="mb-5 text-base font-semibold text-slate-800">
               Clarity Scale
             </h3>
-            <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="font-medium text-green-700">90-100</span>
-                <span className="text-gray-600">
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between rounded-md bg-emerald-50 px-3 py-2">
+                <span className="font-semibold text-emerald-800">90-100</span>
+                <span className="text-slate-700">
                   Crystal clear – concise, no ambiguity, smooth flow
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-green-600">75-89</span>
-                <span className="text-gray-600">
+              <div className="flex items-center justify-between rounded-md bg-green-50 px-3 py-2">
+                <span className="font-semibold text-green-700">75-89</span>
+                <span className="text-slate-700">
                   Quite clear – minor verbosity or jargon
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-amber-600">60-74</span>
-                <span className="text-gray-600">
+              <div className="flex items-center justify-between rounded-md bg-amber-50 px-3 py-2">
+                <span className="font-semibold text-amber-700">60-74</span>
+                <span className="text-slate-700">
                   Mixed clarity – several long/complex sentences
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-red-600">40-59</span>
-                <span className="text-gray-600">
+              <div className="flex items-center justify-between rounded-md bg-orange-50 px-3 py-2">
+                <span className="font-semibold text-orange-700">40-59</span>
+                <span className="text-slate-700">
                   Hard to follow – frequent wordiness, passive overload
                 </span>
               </div>
-              <div className="flex justify-between">
-                <span className="font-medium text-red-700">0-39</span>
-                <span className="text-gray-600">
+              <div className="flex items-center justify-between rounded-md bg-rose-50 px-3 py-2">
+                <span className="font-semibold text-rose-700">0-39</span>
+                <span className="text-slate-700">
                   Very unclear – dense, confusing, poorly structured
                 </span>
               </div>
