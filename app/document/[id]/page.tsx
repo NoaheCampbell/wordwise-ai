@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { EnhancedEditor } from "@/components/enhanced-editor"
 import { DocumentGenerating } from "./_components/document-generating"
+import { AiSuggestionsSidebar } from "@/components/ai-suggestions-sidebar"
 
 export default function DocumentPage() {
   const { id: documentId } = useParams() as { id: string }
@@ -257,16 +258,14 @@ export default function DocumentPage() {
 
           <main className="flex min-h-0 flex-1 overflow-hidden">
             {/* Main Editor Column */}
-            <div className="min-w-0 flex-[2] overflow-hidden p-6">
+            <div className="min-w-0 flex-1 overflow-hidden p-6">
               <EnhancedEditor initialDocument={document} />
             </div>
 
-            {/* AI Suggestions Panel - Fixed height with internal scrolling */}
-            <div className="flex min-w-0 flex-1 flex-col border-l border-gray-200 bg-white">
-              <AISuggestionsPanel />
-            </div>
+            {/* AI Suggestions Panel */}
           </main>
         </div>
+        <AiSuggestionsSidebar />
       </div>
       <AlertDialog open={showDeleteAlert} onOpenChange={setShowDeleteAlert}>
         <AlertDialogContent>
