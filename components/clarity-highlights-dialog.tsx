@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AiClarityScore } from "@/types/ai-clarity-score-types"
-import { Sparkles, Info, MapPin } from "lucide-react"
+import { Sparkles, Info } from "lucide-react"
 
 interface ClarityHighlightsDialogProps {
   clarityScore: AiClarityScore
@@ -135,21 +135,6 @@ export function ClarityHighlightsDialog({
                       </p>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      {onHighlightPhrase && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            console.log("Find button clicked:", highlight)
-                            onHighlightPhrase(highlight)
-                            setOpen(false)
-                          }}
-                          className="border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50"
-                        >
-                          <MapPin className="mr-1 size-3" />
-                          Find
-                        </Button>
-                      )}
                       {onRewriteHighlight && (
                         <Button
                           size="sm"

@@ -2783,36 +2783,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             onOpenChange={setIsSocialSnippetOpen}
           />
 
-          {/* Clarity Score Widget */}
-          {liveClarityScore && (
-            <ClarityHighlightsDialog
-              clarityScore={liveClarityScore}
-              onRewriteHighlight={handleRewriteHighlight}
-              onHighlightPhrase={(phrase: string) => {
-                console.log(
-                  "MAIN EDITOR - Direct handleHighlightPhrase called with:",
-                  phrase
-                )
-                toast.success(`MAIN EDITOR - Clicked on phrase: "${phrase}"`)
-                handleHighlightPhrase(phrase)
-              }}
-              trigger={
-                <Badge
-                  variant="outline"
-                  className={`cursor-pointer text-xs transition-colors ${
-                    liveClarityScore.score >= 90
-                      ? "border-green-500 text-green-700 hover:bg-green-50"
-                      : liveClarityScore.score >= 60
-                        ? "border-amber-500 text-amber-700 hover:bg-amber-50"
-                        : "border-red-500 text-red-700 hover:bg-red-50"
-                  }`}
-                >
-                  Clarity: {liveClarityScore.score}/100
-                </Badge>
-              }
-            />
-          )}
-
           {highlights.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {highlights.length} suggestions
