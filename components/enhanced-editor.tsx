@@ -3164,7 +3164,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       </div>
 
       <div className="border-b border-gray-200 bg-gray-50 px-6 py-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center gap-4 text-xs">
             <span className="font-medium text-gray-600">Legend:</span>
             <div className="flex items-center gap-1">
@@ -3189,19 +3189,23 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               <span className="font-medium text-gray-700">
                 Detected Regions:
               </span>
-              {detectedRegions.map((region, index) => (
-                <Badge
-                  key={index}
-                  variant="secondary"
-                  className="border-blue-200 bg-blue-100 text-xs text-blue-800 hover:bg-blue-200"
-                >
-                  {region.type === "subject" && "📧"}
-                  {region.type === "intro" && "🎯"}
-                  {region.type === "cta" && "🚀"}
-                  {region.type === "body" && "📝"}
-                  {region.type === "closing" && "👋"} {region.type}
-                </Badge>
-              ))}
+              <div className="flex flex-wrap gap-1">
+                {Array.from(new Set(detectedRegions.map(r => r.type))).map(
+                  regionType => (
+                    <Badge
+                      key={regionType}
+                      variant="secondary"
+                      className="border-blue-200 bg-blue-100 text-xs text-blue-800 hover:bg-blue-200"
+                    >
+                      {regionType === "subject" && "📧"}
+                      {regionType === "intro" && "🎯"}
+                      {regionType === "cta" && "🚀"}
+                      {regionType === "body" && "📝"}
+                      {regionType === "closing" && "👋"} {regionType}
+                    </Badge>
+                  )
+                )}
+              </div>
             </div>
           )}
         </div>
