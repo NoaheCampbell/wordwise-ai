@@ -47,7 +47,10 @@ export default function WritingApp() {
       <div className="flex h-screen w-full flex-col bg-gray-50">
         <ResizablePanelGroup direction="horizontal" className="flex-1">
           <ResizablePanel defaultSize={20} minSize={15} maxSize={35}>
-            <div style={{ "--sidebar-width": "100%" } as React.CSSProperties}>
+            <div
+              className="h-full"
+              style={{ "--sidebar-width": "100%" } as React.CSSProperties}
+            >
               <DocumentSidebar />
             </div>
           </ResizablePanel>

@@ -108,8 +108,8 @@ export function DocumentSidebar() {
   }
 
   return (
-    <div className="flex size-full min-h-0 flex-col border-r border-gray-300 bg-white">
-      {/* Header */}
+    <div className="flex h-full max-h-screen flex-col border-r border-gray-300 bg-white">
+      {/* Header - Fixed */}
       <div className="shrink-0 border-b border-gray-200 bg-white p-4">
         <div className="space-y-3">
           <div className="relative">
@@ -122,210 +122,207 @@ export function DocumentSidebar() {
         </div>
       </div>
 
-      {/* Scrollable Content */}
-      <div className="min-h-0 flex-1 overflow-y-auto bg-gray-50">
-        {/* Quick Stats Section */}
-        <div className="p-4">
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-700">
-            Quick Stats
-          </div>
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            {onDocumentPage && liveClarityScore && displayScore !== null ? (
-              <ClarityHighlightsDialog
-                clarityScore={liveClarityScore}
-                onHighlightPhrase={(phrase: string) => {
-                  highlightPhrase(phrase)
-                }}
-                trigger={
-                  <div
-                    className={`cursor-pointer rounded-lg border transition-colors ${
+      {/* Quick Stats Section - Fixed */}
+      <div className="shrink-0 p-4">
+        <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-700">
+          Quick Stats
+        </div>
+        <div className="mb-4 grid grid-cols-2 gap-2">
+          {onDocumentPage && liveClarityScore && displayScore !== null ? (
+            <ClarityHighlightsDialog
+              clarityScore={liveClarityScore}
+              onHighlightPhrase={(phrase: string) => {
+                highlightPhrase(phrase)
+              }}
+              trigger={
+                <div
+                  className={`cursor-pointer rounded-lg border transition-colors ${
+                    scoreColor === "green"
+                      ? "border-green-200 bg-green-50 hover:bg-green-100"
+                      : scoreColor === "amber"
+                        ? "border-amber-200 bg-amber-50 hover:bg-amber-100"
+                        : scoreColor === "red"
+                          ? "border-red-200 bg-red-50 hover:bg-red-100"
+                          : "border-blue-200 bg-blue-50 hover:bg-blue-100"
+                  } p-3 text-center`}
+                >
+                  <TrendingUp
+                    className={`mx-auto mb-1 size-4 ${
                       scoreColor === "green"
-                        ? "border-green-200 bg-green-50 hover:bg-green-100"
+                        ? "text-green-700"
                         : scoreColor === "amber"
-                          ? "border-amber-200 bg-amber-50 hover:bg-amber-100"
+                          ? "text-amber-700"
                           : scoreColor === "red"
-                            ? "border-red-200 bg-red-50 hover:bg-red-100"
-                            : "border-blue-200 bg-blue-50 hover:bg-blue-100"
-                    } p-3 text-center`}
+                            ? "text-red-700"
+                            : "text-blue-700"
+                    }`}
+                  />
+                  <div
+                    className={`text-sm font-semibold ${
+                      scoreColor === "green"
+                        ? "text-green-900"
+                        : scoreColor === "amber"
+                          ? "text-amber-900"
+                          : scoreColor === "red"
+                            ? "text-red-900"
+                            : "text-blue-900"
+                    }`}
                   >
-                    <TrendingUp
-                      className={`mx-auto mb-1 size-4 ${
-                        scoreColor === "green"
-                          ? "text-green-700"
-                          : scoreColor === "amber"
-                            ? "text-amber-700"
-                            : scoreColor === "red"
-                              ? "text-red-700"
-                              : "text-blue-700"
-                      }`}
-                    />
-                    <div
-                      className={`text-sm font-semibold ${
-                        scoreColor === "green"
-                          ? "text-green-900"
-                          : scoreColor === "amber"
-                            ? "text-amber-900"
-                            : scoreColor === "red"
-                              ? "text-red-900"
-                              : "text-blue-900"
-                      }`}
-                    >
-                      {isScoreLoading ? (
-                        <div
-                          className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
-                            scoreColor === "green"
-                              ? "border-green-600"
-                              : scoreColor === "amber"
-                                ? "border-amber-600"
-                                : scoreColor === "red"
-                                  ? "border-red-600"
-                                  : "border-blue-600"
-                          }`}
-                        />
-                      ) : (
-                        (displayScore ?? "--")
-                      )}
-                    </div>
-                    <div
-                      className={`text-xs font-medium ${
-                        scoreColor === "green"
-                          ? "text-green-700"
-                          : scoreColor === "amber"
-                            ? "text-amber-700"
-                            : scoreColor === "red"
-                              ? "text-red-700"
-                              : "text-blue-700"
-                      }`}
-                    >
-                      Clarity Score
-                    </div>
+                    {isScoreLoading ? (
+                      <div
+                        className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
+                          scoreColor === "green"
+                            ? "border-green-600"
+                            : scoreColor === "amber"
+                              ? "border-amber-600"
+                              : scoreColor === "red"
+                                ? "border-red-600"
+                                : "border-blue-600"
+                        }`}
+                      />
+                    ) : (
+                      (displayScore ?? "--")
+                    )}
                   </div>
-                }
-              />
-            ) : (
-              <div
-                className={`rounded-lg border ${
+                  <div
+                    className={`text-xs font-medium ${
+                      scoreColor === "green"
+                        ? "text-green-700"
+                        : scoreColor === "amber"
+                          ? "text-amber-700"
+                          : scoreColor === "red"
+                            ? "text-red-700"
+                            : "text-blue-700"
+                    }`}
+                  >
+                    Clarity Score
+                  </div>
+                </div>
+              }
+            />
+          ) : (
+            <div
+              className={`rounded-lg border ${
+                scoreColor === "green"
+                  ? "border-green-200 bg-green-50"
+                  : scoreColor === "amber"
+                    ? "border-amber-200 bg-amber-50"
+                    : scoreColor === "red"
+                      ? "border-red-200 bg-red-50"
+                      : "border-blue-200 bg-blue-50"
+              } p-3 text-center`}
+            >
+              <TrendingUp
+                className={`mx-auto mb-1 size-4 ${
                   scoreColor === "green"
-                    ? "border-green-200 bg-green-50"
+                    ? "text-green-700"
                     : scoreColor === "amber"
-                      ? "border-amber-200 bg-amber-50"
+                      ? "text-amber-700"
                       : scoreColor === "red"
-                        ? "border-red-200 bg-red-50"
-                        : "border-blue-200 bg-blue-50"
-                } p-3 text-center`}
+                        ? "text-red-700"
+                        : "text-blue-700"
+                }`}
+              />
+              <div
+                className={`text-sm font-semibold ${
+                  scoreColor === "green"
+                    ? "text-green-900"
+                    : scoreColor === "amber"
+                      ? "text-amber-900"
+                      : scoreColor === "red"
+                        ? "text-red-900"
+                        : "text-blue-900"
+                }`}
               >
-                <TrendingUp
-                  className={`mx-auto mb-1 size-4 ${
-                    scoreColor === "green"
-                      ? "text-green-700"
-                      : scoreColor === "amber"
-                        ? "text-amber-700"
-                        : scoreColor === "red"
-                          ? "text-red-700"
-                          : "text-blue-700"
-                  }`}
-                />
-                <div
-                  className={`text-sm font-semibold ${
-                    scoreColor === "green"
-                      ? "text-green-900"
-                      : scoreColor === "amber"
-                        ? "text-amber-900"
-                        : scoreColor === "red"
-                          ? "text-red-900"
-                          : "text-blue-900"
-                  }`}
-                >
-                  {isScoreLoading ? (
-                    <div
-                      className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
-                        scoreColor === "green"
-                          ? "border-green-600"
-                          : scoreColor === "amber"
-                            ? "border-amber-600"
-                            : scoreColor === "red"
-                              ? "border-red-600"
-                              : "border-blue-600"
-                      }`}
-                    />
-                  ) : (
-                    (displayScore ?? "--")
-                  )}
-                </div>
-                <div
-                  className={`text-xs font-medium ${
-                    scoreColor === "green"
-                      ? "text-green-700"
-                      : scoreColor === "amber"
-                        ? "text-amber-700"
-                        : scoreColor === "red"
-                          ? "text-red-700"
-                          : "text-blue-700"
-                  }`}
-                >
-                  Clarity Score
-                </div>
+                {isScoreLoading ? (
+                  <div
+                    className={`mx-auto size-4 animate-spin rounded-full border-b-2 ${
+                      scoreColor === "green"
+                        ? "border-green-600"
+                        : scoreColor === "amber"
+                          ? "border-amber-600"
+                          : scoreColor === "red"
+                            ? "border-red-600"
+                            : "border-blue-600"
+                    }`}
+                  />
+                ) : (
+                  (displayScore ?? "--")
+                )}
               </div>
-            )}
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center">
-              <BarChart3 className="mx-auto mb-1 size-4 text-green-700" />
-              <div className="text-sm font-semibold text-green-900">
-                {documents.length}
-              </div>
-              <div className="text-xs font-medium text-green-700">
-                Documents
+              <div
+                className={`text-xs font-medium ${
+                  scoreColor === "green"
+                    ? "text-green-700"
+                    : scoreColor === "amber"
+                      ? "text-amber-700"
+                      : scoreColor === "red"
+                        ? "text-red-700"
+                        : "text-blue-700"
+                }`}
+              >
+                Clarity Score
               </div>
             </div>
-          </div>
-
-          {/* Ideas Hub Button */}
-          <IdeasDialog>
-            <Button
-              variant="outline"
-              className="w-full justify-start gap-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
-            >
-              <Lightbulb className="size-4" />
-              <span className="text-sm font-medium">Ideas Hub</span>
-            </Button>
-          </IdeasDialog>
-        </div>
-
-        {/* Separator */}
-        <div className="border-t border-gray-200" />
-
-        {/* Filter by Tags Section */}
-        <div className="p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wide text-gray-700">
-              Filter by Tags
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-6 p-0 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
-            >
-              <Filter className="size-3" />
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {tags.map(tag => (
-              <Badge
-                key={tag}
-                variant="secondary"
-                className="cursor-pointer border border-gray-300 bg-gray-200 text-xs text-gray-800 transition-colors hover:bg-gray-300"
-                onClick={() => handleTagClick(tag)}
-              >
-                {tag}
-              </Badge>
-            ))}
+          )}
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-center">
+            <BarChart3 className="mx-auto mb-1 size-4 text-green-700" />
+            <div className="text-sm font-semibold text-green-900">
+              {documents.length}
+            </div>
+            <div className="text-xs font-medium text-green-700">Documents</div>
           </div>
         </div>
 
-        {/* Separator */}
-        <div className="border-t border-gray-200" />
+        {/* Ideas Hub Button */}
+        <IdeasDialog>
+          <Button
+            variant="outline"
+            className="w-full justify-start gap-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 hover:text-amber-900"
+          >
+            <Lightbulb className="size-4" />
+            <span className="text-sm font-medium">Ideas Hub</span>
+          </Button>
+        </IdeasDialog>
+      </div>
 
-        {/* Recent Documents Section */}
-        <div className="p-4">
+      {/* Separator */}
+      <div className="shrink-0 border-t border-gray-200" />
+
+      {/* Filter by Tags Section - Fixed */}
+      <div className="shrink-0 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-700">
+            Filter by Tags
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-6 p-0 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
+          >
+            <Filter className="size-3" />
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {tags.map(tag => (
+            <Badge
+              key={tag}
+              variant="secondary"
+              className="cursor-pointer border border-gray-300 bg-gray-200 text-xs text-gray-800 transition-colors hover:bg-gray-300"
+              onClick={() => handleTagClick(tag)}
+            >
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      </div>
+
+      {/* Separator */}
+      <div className="shrink-0 border-t border-gray-200" />
+
+      {/* Recent Documents Section - Scrollable */}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="h-full space-y-2 overflow-y-auto bg-gray-50 p-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wide text-gray-700">
               Recent Documents
@@ -367,25 +364,34 @@ export function DocumentSidebar() {
                 </Button>
               </div>
             ) : (
-              documents.map(document => (
-                <div
-                  key={document.id}
-                  onClick={() => handleDocumentClick(document.id)}
-                  className="w-full cursor-pointer justify-start rounded-lg p-3 transition-colors hover:bg-gray-100"
-                >
-                  <div className="flex w-full items-start gap-3">
-                    <FileText className="mt-0.5 size-4 shrink-0 text-gray-500" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-900">
-                        {document.title || "Untitled Document"}
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {formatDate(document.updatedAt.toString())}
-                      </p>
+              <>
+                <div className="mb-4 text-xs font-medium text-gray-600">
+                  {documents.length} document{documents.length !== 1 ? "s" : ""}{" "}
+                  found
+                </div>
+                {documents.map(document => (
+                  <div
+                    key={document.id}
+                    onClick={() => handleDocumentClick(document.id)}
+                    className="w-full cursor-pointer justify-start rounded-lg p-3 transition-colors hover:bg-gray-100"
+                  >
+                    <div className="flex w-full items-start gap-3">
+                      <FileText className="mt-0.5 size-4 shrink-0 text-gray-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">
+                          {document.title || "Untitled Document"}
+                        </p>
+                        <p className="text-xs text-gray-600">
+                          {formatDate(document.updatedAt.toString())}
+                        </p>
+                      </div>
                     </div>
                   </div>
+                ))}
+                <div className="pb-4 pt-2 text-center text-xs text-gray-500">
+                  End of documents
                 </div>
-              ))
+              </>
             )}
           </div>
         </div>
