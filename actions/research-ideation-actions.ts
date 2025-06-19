@@ -32,6 +32,34 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 })
 
+async function getSearchKeywords(
+  title: string,
+  content: string
+): Promise<string[]> {
+  const keywordPrompt = `
+Analyze the following title and content to generate 5-7 concise, highly relevant keywords for a web search.
+Focus on the core concepts, entities, and topics.
+Return a JSON object with a "keywords" array.
+
+Title: ${title}
+Content: ${content.slice(0, 500)}
+
+Example:
+Title: "The Future of Renewable Energy"
+Content: "A look at solar, wind, and geothermal power..."
+Output: {"keywords": ["renewable energy future", "solar power trends", "wind energy innovation", "geothermal technology"]}
+`
+  const keywordResponse = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: keywordPrompt }],
+    response_format: { type: "json_object" }
+  })
+  const responseJson = JSON.parse(
+    keywordResponse.choices[0]?.message?.content || '{"keywords": []}'
+  )
+  return responseJson.keywords || []
+}
+
 // Rate limiting for research actions
 const researchRateLimiter = new Map<string, { count: number; resetTime: number }>()
 const RESEARCH_RATE_LIMIT = 30 // 30 requests per hour for research
@@ -165,12 +193,13 @@ export async function findRelevantArticlesAction(
       domainInstructions += ` Avoid results from these domains: ${disallowedDomains.join(", ")}.`
     }
 
-    const searchPrompt = `Find 5 high-quality, relevant articles about: ${searchQuery}${domainInstructions}
+    const searchPrompt = `Find 5 high-quality, relevant articles about: ${searchQuery}${domainInstructions}.
 
-For each article found, provide:
-1. The article title
-2. The URL
-3. A concise summary (2-3 sentences)
+For each article, provide the title, URL, and a concise summary (2-3 sentences) in this exact format:
+
+1. Title: [Article Title]
+   URL: [Article URL]
+   Summary: [A concise summary of the article]
 
 Focus on recent, authoritative sources that would be valuable for research and content creation.`
 
@@ -195,36 +224,23 @@ Focus on recent, authoritative sources that would be valuable for research and c
         const textContent = item.content?.[0]
         if (textContent && "text" in textContent) {
           assistantMessage = textContent.text || ""
-          
-          // Extract URLs from citations if available
-          const annotations =
-            "annotations" in textContent ? textContent.annotations || [] : []
-          console.log(
-            `Found ${annotations.length} annotations from OpenAI web search.`
-          )
-          searchResults = annotations
-            .filter((annotation: any) => annotation.type === "url_citation")
-            .slice(0, 5)
-            .map((annotation: any) => ({
-              title: annotation.title,
-              url: annotation.url,
-              summary: "Summary extracted from search results"
-            }))
         }
       }
     }
 
-    // If we don't have structured results from annotations, try to parse from the assistant message
-    if (searchResults.length === 0 && assistantMessage) {
-      // Fallback: extract information from the assistant's text response
-      // This is a simple regex approach to find URLs and titles
-      const urlRegex = /\[([^\]]+)\]\(([^)]+)\)/g
-      const matches = [...assistantMessage.matchAll(urlRegex)]
+    if (assistantMessage) {
+      console.log("ASSISTANT MESSAGE:", assistantMessage) // For debugging
 
-      searchResults = matches.slice(0, 5).map((match, index) => ({
-        title: match[1],
-        url: match[2],
-        summary: `Article found from web search results`
+      const articleRegex =
+        /^\s*\d+\.\s*\*\*Title:\*\*\s*([^\n]+)\s*\n\s*\*\*URL:\*\*\s*\(\[.*?\]\(([^)]+)\)\)\s*\n\s*\*\*Summary:\*\*\s*([^\n]+)/gm
+      const matches = [...assistantMessage.matchAll(articleRegex)]
+
+      console.log(`Found ${matches.length} articles from assistant message.`)
+
+      searchResults = matches.slice(0, 5).map(match => ({
+        title: (match[1] || "").trim().replace(/^"|"$/g, ""),
+        url: (match[2] || "").trim(),
+        summary: (match[3] || "").trim()
       }))
     }
 
@@ -888,16 +904,7 @@ export async function writeFullDocumentAction(
       .set({ status: "finding_sources" })
       .where(eq(documentsTable.id, documentId))
 
-    const keywordPrompt = `Extract 5-7 relevant keywords for a web search from the following. Return as a JSON object: {"keywords": ["keyword1"]}.\n\nTitle: ${ideaTitle}\nContent: ${ideaContent}`
-    const keywordResponse = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: keywordPrompt }],
-      response_format: { type: "json_object" }
-    })
-    const responseJson = JSON.parse(
-      keywordResponse.choices[0]?.message?.content || "{}"
-    )
-    const keywords = responseJson.keywords || []
+    const keywords = await getSearchKeywords(ideaTitle, ideaContent)
     const articlesResult = await findRelevantArticlesAction(keywords, documentId)
     const sources = articlesResult.isSuccess ? articlesResult.data : []
     console.log(`Found ${sources.length} sources to generate document.`)
