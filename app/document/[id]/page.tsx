@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
@@ -19,7 +19,7 @@ import {
 } from "@/actions/db/documents-actions"
 import { getIdeaAction } from "@/actions/db/ideas-actions"
 import { generateDocumentFromIdeaAction } from "@/actions/research-ideation-actions"
-import { SelectDocument } from "@/db/schema/documents-schema"
+import { SelectDocument } from "@/db/schema"
 import { toast } from "sonner"
 import { useDocument } from "@/components/utilities/document-provider"
 import { useDebounce } from "use-debounce"
@@ -43,10 +43,10 @@ import { EnhancedEditor } from "@/components/enhanced-editor"
 import { DocumentGenerating } from "./_components/document-generating"
 
 export default function DocumentPage() {
-  const params = useParams()
+  const { id: documentId } = useParams() as { id: string }
+  const { user } = useUser()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user } = useUser()
   const [document, setDocument] = useState<SelectDocument | null>(null)
   const [title, setTitle] = useState("")
   const [content, setContent] = useState("")
@@ -62,102 +62,103 @@ export default function DocumentPage() {
   } = useDocument()
   const [debouncedContent] = useDebounce(content, 500)
 
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [generationFailed, setGenerationFailed] = useState(false)
-  const [ideaTitle, setIdeaTitle] = useState<string | undefined>()
-  const [ideaType, setIdeaType] = useState<string | undefined>()
+  const [generationStatus, setGenerationStatus] = useState<string | null>(null)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  const documentId = params.id as string
+  const loadDocument = useCallback(async () => {
+    if (!user) return
 
-  const loadDocument = useCallback(
-    async (isInitialLoad = false) => {
-      if (!user || !documentId) return
-      setIsLoading(true)
-      const result = await getDocumentAction(documentId, user.id)
+    const result = await getDocumentAction(documentId, user.id)
 
-      if (result.isSuccess) {
-        const doc = result.data
-        setDocument(doc)
-        setTitle(doc.title)
-        setContent(doc.content || "")
-        if (doc.status === "complete" || doc.status === "failed") {
-          setIsGenerating(false)
-          if (doc.status === "failed") {
-            setGenerationFailed(true)
-            if (!isInitialLoad) toast.error("Document generation failed.")
-          }
-        }
-      } else {
-        toast.error("Failed to load document")
-        setDocument(null)
-        setIsGenerating(false)
+    if (result.isSuccess) {
+      const doc = result.data
+      setDocument(doc)
+      setGenerationStatus(doc.status)
+
+      const isGenerating =
+        doc.status && doc.status !== "complete" && doc.status !== "failed"
+      if (!isGenerating && intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
-      setIsLoading(false)
-    },
-    [user, documentId]
-  )
+    } else {
+      console.error("Failed to load document:", result.message)
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      setDocument(null)
+    }
+    setIsLoading(false)
+  }, [user, documentId])
 
   useEffect(() => {
     const isGeneratingParam = searchParams.get("generating") === "true"
-    if (isGeneratingParam) {
-      const ideaId = searchParams.get("ideaId")
-      if (ideaId) {
-        setIsGenerating(true)
-        getIdeaAction(ideaId).then(ideaResult => {
-          if (ideaResult.isSuccess) {
-            const idea = ideaResult.data
-            setIdeaTitle(idea.title)
-            setIdeaType(idea.type)
-            generateDocumentFromIdeaAction(
-              documentId,
-              idea.title,
-              idea.content,
-              idea.type
-            ).then(genResult => {
-              if (!genResult.isSuccess) {
-                toast.error("Failed to start document generation.")
-                setIsGenerating(false)
-                setGenerationFailed(true)
-              }
-            })
-          } else {
-            toast.error("Failed to load idea details for generation.")
-            setIsGenerating(false)
-            setGenerationFailed(true)
-          }
-        })
-      } else {
-        loadDocument(true)
-      }
+    const ideaId = searchParams.get("ideaId")
+
+    if (isGeneratingParam && ideaId && user) {
+      getIdeaAction(ideaId).then(ideaResult => {
+        if (ideaResult.isSuccess) {
+          const idea = ideaResult.data
+          generateDocumentFromIdeaAction(
+            documentId,
+            idea.title,
+            idea.content,
+            idea.type
+          ).then(genResult => {
+            if (genResult.isSuccess) {
+              toast.success("Document generation started!")
+              loadDocument() // Refresh state after triggering
+            } else {
+              toast.error(
+                genResult.message || "Failed to start document generation."
+              )
+            }
+          })
+        } else {
+          toast.error("Could not fetch idea details to start generation.")
+        }
+      })
     } else {
-      loadDocument(true)
+      // only load if not triggered by generation flow
+      if (user && documentId) {
+        loadDocument()
+      }
     }
-  }, [searchParams, documentId, loadDocument])
+  }, [searchParams, user, documentId, loadDocument])
 
   useEffect(() => {
-    let pollInterval: NodeJS.Timeout | null = null
+    const isGenerating =
+      generationStatus &&
+      generationStatus !== "complete" &&
+      generationStatus !== "failed"
 
     if (isGenerating) {
-      pollInterval = setInterval(() => {
-        loadDocument()
-      }, 3000) // Poll every 3 seconds
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(loadDocument, 3000)
+      }
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
     }
 
     return () => {
-      if (pollInterval) {
-        clearInterval(pollInterval)
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
       }
     }
-  }, [isGenerating, loadDocument])
+  }, [generationStatus, loadDocument])
 
   useEffect(() => {
-    if (user && params.id) {
+    if (user && documentId) {
       loadDocument()
     }
     return () => {
       clearLiveClarityScore()
     }
-  }, [user, params.id, clearLiveClarityScore])
+  }, [user, documentId, clearLiveClarityScore])
 
   useEffect(() => {
     updateLiveClarityScore(debouncedContent)
@@ -202,53 +203,41 @@ export default function DocumentPage() {
     }
   }
 
-  if (isGenerating) {
-    return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 p-8">
-        <DocumentGenerating ideaTitle={ideaTitle} ideaType={ideaType} />
-      </div>
-    )
+  const handleTitleChange = (newTitle: string) => {
+    setTitle(newTitle)
   }
 
-  if (generationFailed) {
-    return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="mb-4 text-red-600">
-            Failed to generate the document content.
-          </p>
-          <Button variant="outline" onClick={() => router.push("/")}>
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Dashboard
-          </Button>
-        </div>
-      </div>
-    )
+  const handleContentChange = (newContent: string) => {
+    setContent(newContent)
   }
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="mx-auto size-12 animate-spin rounded-full border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-gray-600">Loading document...</p>
-        </div>
+      <div className="flex h-screen w-full items-center justify-center">
+        Loading document...
       </div>
+    )
+  }
+
+  const isStillGenerating =
+    generationStatus &&
+    generationStatus !== "complete" &&
+    generationStatus !== "failed"
+
+  if (isStillGenerating) {
+    return (
+      <DocumentGenerating
+        ideaTitle={document?.title}
+        ideaType="Document"
+        status={generationStatus}
+      />
     )
   }
 
   if (!document) {
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <p className="mb-4 text-gray-600">
-            Document not found or you do not have permission to view it.
-          </p>
-          <Button variant="outline" onClick={() => router.push("/")}>
-            <ArrowLeft className="mr-2 size-4" />
-            Back to Dashboard
-          </Button>
-        </div>
+      <div className="flex h-screen w-full items-center justify-center">
+        Document not found or you do not have permission to view it.
       </div>
     )
   }

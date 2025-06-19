@@ -18,6 +18,10 @@ import { DocumentAnalysis, EnhancedDocumentAnalysis } from "@/types"
 
 export const documentStatusEnum = pgEnum("document_status", [
   "generating",
+  "finding_sources",
+  "writing_introduction",
+  "writing_body",
+  "writing_conclusion",
   "complete",
   "failed"
 ])
