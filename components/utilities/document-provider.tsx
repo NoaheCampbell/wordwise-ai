@@ -47,6 +47,8 @@ interface DocumentContextType {
   dismissSuggestion: (id: string) => void
   generateNewIdeas: () => Promise<void>
   registerGenerateNewIdeas: (callback: () => Promise<void>) => void
+  highlightPhrase: (phrase: string) => void
+  registerHighlightPhrase: (callback: (phrase: string) => void) => void
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(
@@ -81,6 +83,15 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     console.warn("generateNewIdeas callback not registered")
   })
 
+  const highlightPhraseCallback = useRef<(phrase: string) => void>(
+    (phrase: string) => {
+      console.warn(
+        "highlightPhrase callback not registered for phrase:",
+        phrase
+      )
+    }
+  )
+
   const registerSuggestionCallbacks = useCallback(
     (apply: (id: string) => void, dismiss: (id: string) => void) => {
       suggestionCallbacks.current = { apply, dismiss }
@@ -103,6 +114,17 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const registerGenerateNewIdeas = useCallback(
     (callback: () => Promise<void>) => {
       generateIdeasCallback.current = callback
+    },
+    []
+  )
+
+  const highlightPhrase = useCallback((phrase: string) => {
+    highlightPhraseCallback.current(phrase)
+  }, [])
+
+  const registerHighlightPhrase = useCallback(
+    (callback: (phrase: string) => void) => {
+      highlightPhraseCallback.current = callback
     },
     []
   )
@@ -193,7 +215,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         applySuggestion,
         dismissSuggestion,
         generateNewIdeas,
-        registerGenerateNewIdeas
+        registerGenerateNewIdeas,
+        highlightPhrase,
+        registerHighlightPhrase
       }}
     >
       {children}

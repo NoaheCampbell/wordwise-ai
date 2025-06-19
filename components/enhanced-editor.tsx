@@ -192,6 +192,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setSuggestions,
     registerSuggestionCallbacks,
     registerGenerateNewIdeas,
+    registerHighlightPhrase,
     setIsAnalyzing: setProviderIsAnalyzing,
     setCurrentContent,
     setCurrentDocumentId
@@ -992,6 +993,179 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   // Handle rewriting clarity highlights
   const handleRewriteHighlight = async (highlightText: string) => {
     await handleRewriteWithValidation("Clear", highlightText)
+  }
+
+  // Handle highlighting a phrase in the editor
+  const handleHighlightPhrase = (phrase: string) => {
+    console.log("handleHighlightPhrase called with:", phrase)
+    toast.info(`Attempting to highlight: "${phrase}"`)
+
+    if (!textareaRef.current || !phrase) {
+      console.log("Early return: no textareaRef or phrase")
+      toast.error("No editor or phrase available")
+      return
+    }
+
+    const currentText = contentRef.current
+    console.log("Current text length:", currentText.length)
+    console.log("Searching for phrase:", JSON.stringify(phrase))
+    console.log(
+      "First 200 chars of text:",
+      JSON.stringify(currentText.substring(0, 200))
+    )
+
+    // Try multiple search strategies
+    let phraseIndex = -1
+    let actualPhrase = phrase
+
+    // Strategy 1: Exact match
+    phraseIndex = currentText.indexOf(phrase)
+    console.log("Strategy 1 (exact match):", phraseIndex)
+
+    // Strategy 2: Case insensitive
+    if (phraseIndex === -1) {
+      phraseIndex = currentText.toLowerCase().indexOf(phrase.toLowerCase())
+      console.log("Strategy 2 (case insensitive):", phraseIndex)
+    }
+
+    // Strategy 3: Remove quotes and try again
+    if (phraseIndex === -1) {
+      const unquotedPhrase = phrase.replace(/["""'']/g, "").trim()
+      phraseIndex = currentText.indexOf(unquotedPhrase)
+      actualPhrase = unquotedPhrase
+      console.log(
+        "Strategy 3 (remove quotes):",
+        phraseIndex,
+        "phrase:",
+        unquotedPhrase
+      )
+    }
+
+    // Strategy 4: Normalize whitespace
+    if (phraseIndex === -1) {
+      const normalizedPhrase = phrase
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/["""'']/g, "")
+      const normalizedText = currentText.replace(/\s+/g, " ")
+      phraseIndex = normalizedText.indexOf(normalizedPhrase)
+      actualPhrase = normalizedPhrase
+      console.log(
+        "Strategy 4 (normalize whitespace):",
+        phraseIndex,
+        "phrase:",
+        normalizedPhrase
+      )
+    }
+
+    // Strategy 5: Try to find individual words
+    if (phraseIndex === -1) {
+      const words = phrase
+        .replace(/["""'']/g, "")
+        .split(/\s+/)
+        .filter(w => w.length > 2)
+      console.log("Strategy 5 - searching for words:", words)
+
+      for (const word of words) {
+        const wordIndex = currentText.toLowerCase().indexOf(word.toLowerCase())
+        if (wordIndex !== -1) {
+          phraseIndex = wordIndex
+          actualPhrase = word
+          console.log("Found word:", word, "at index:", wordIndex)
+          break
+        }
+      }
+    }
+
+    if (phraseIndex === -1) {
+      console.log("Phrase not found after all attempts")
+      toast.error(`Could not find phrase: "${phrase}" in the current text`)
+      return
+    }
+
+    console.log("Found phrase at index:", phraseIndex)
+
+    // Create a temporary highlight that will be removed after a few seconds
+    const tempHighlight: HighlightedText = {
+      id: `temp-highlight-${Date.now()}`,
+      start: phraseIndex,
+      end: phraseIndex + actualPhrase.length,
+      type: "clarity",
+      suggestion: {
+        id: `temp-suggestion-${Date.now()}`,
+        type: "clarity",
+        title: "Clarity Highlight",
+        description: "Temporary highlight for clarity phrase",
+        originalText: actualPhrase,
+        suggestedText: actualPhrase,
+        confidence: 1.0,
+        icon: "🎯",
+        span: {
+          start: phraseIndex,
+          end: phraseIndex + actualPhrase.length,
+          text: actualPhrase
+        }
+      }
+    }
+
+    // Add temporary highlight
+    setRealTimeHighlights(prev => [...prev, tempHighlight])
+
+    // Scroll to the highlighted text
+    setTimeout(() => {
+      if (textareaRef.current) {
+        // Find the highlighted element and scroll to it
+        const highlightedElement = textareaRef.current.querySelector(
+          `[data-suggestion-id="${tempHighlight.suggestion.id}"]`
+        )
+        if (highlightedElement) {
+          highlightedElement.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+            inline: "nearest"
+          })
+
+          // Add a pulse animation class temporarily
+          highlightedElement.classList.add("animate-pulse")
+          setTimeout(() => {
+            highlightedElement.classList.remove("animate-pulse")
+          }, 2000)
+        }
+      }
+    }, 100)
+
+    // Remove the temporary highlight after 5 seconds
+    setTimeout(() => {
+      setRealTimeHighlights(prev => prev.filter(h => h.id !== tempHighlight.id))
+    }, 5000)
+
+    toast.success("Phrase highlighted in editor")
+  }
+
+  // Register the highlight phrase function
+  useEffect(() => {
+    registerHighlightPhrase(handleHighlightPhrase)
+  }, [registerHighlightPhrase])
+
+  // Debug: Log when the function is created
+  console.log(
+    "handleHighlightPhrase function created:",
+    !!handleHighlightPhrase
+  )
+
+  // Debug: Log what we're passing to the dialog
+  console.log(
+    "Enhanced Editor - handleHighlightPhrase exists:",
+    !!handleHighlightPhrase,
+    typeof handleHighlightPhrase
+  )
+  if (liveClarityScore) {
+    console.log("About to render ClarityHighlightsDialog with:", {
+      clarityScore: !!liveClarityScore,
+      onRewriteHighlight: !!handleRewriteHighlight,
+      onHighlightPhrase: !!handleHighlightPhrase,
+      handleHighlightPhraseType: typeof handleHighlightPhrase
+    })
   }
 
   // Bibliography management functions
@@ -2079,7 +2253,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }
 
-  const getHighlightStyle = (type: SuggestionType) => {
+  const getHighlightStyle = (type: SuggestionType, isTemporary?: boolean) => {
+    if (isTemporary) {
+      return "bg-yellow-300 border-b-2 border-yellow-500 shadow-md"
+    }
+
     switch (type) {
       case "grammar":
       case "spelling":
@@ -2139,9 +2317,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
           )
           .join("\n")
 
+        const isTemporary =
+          topHighlight.suggestion.id.startsWith("temp-suggestion-")
         html += `<span 
           class="cursor-pointer ${getHighlightStyle(
-            topHighlight.type
+            topHighlight.type,
+            isTemporary
           )} hover:opacity-80 transition-opacity" 
           style="border-radius: 2px; margin: 0; padding: 0; line-height: inherit; font-size: inherit; font-family: inherit;"
           data-suggestion-id="${topHighlight.suggestion.id}"
@@ -2607,6 +2788,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             <ClarityHighlightsDialog
               clarityScore={liveClarityScore}
               onRewriteHighlight={handleRewriteHighlight}
+              onHighlightPhrase={(phrase: string) => {
+                console.log(
+                  "MAIN EDITOR - Direct handleHighlightPhrase called with:",
+                  phrase
+                )
+                toast.success(`MAIN EDITOR - Clicked on phrase: "${phrase}"`)
+                handleHighlightPhrase(phrase)
+              }}
               trigger={
                 <Badge
                   variant="outline"

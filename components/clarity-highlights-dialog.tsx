@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import {
   Dialog,
   DialogContent,
@@ -10,19 +11,32 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AiClarityScore } from "@/types/ai-clarity-score-types"
-import { Sparkles, Info } from "lucide-react"
+import { Sparkles, Info, MapPin } from "lucide-react"
 
 interface ClarityHighlightsDialogProps {
   clarityScore: AiClarityScore
   trigger?: React.ReactNode
   onRewriteHighlight?: (highlight: string) => void
+  onHighlightPhrase?: (phrase: string) => void
 }
 
 export function ClarityHighlightsDialog({
   clarityScore,
   trigger,
-  onRewriteHighlight
+  onRewriteHighlight,
+  onHighlightPhrase
 }: ClarityHighlightsDialogProps) {
+  const [open, setOpen] = useState(false)
+
+  // Debug: Check if the function is available
+  console.log(
+    "ClarityHighlightsDialog RENDERED - onHighlightPhrase available:",
+    !!onHighlightPhrase,
+    "score:",
+    clarityScore.score,
+    "timestamp:",
+    Date.now()
+  )
   const getScoreColor = (score: number) => {
     if (score >= 90) return "green"
     if (score >= 60) return "amber"
@@ -40,7 +54,7 @@ export function ClarityHighlightsDialog({
   const scoreColor = getScoreColor(clarityScore.score)
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
           <Button variant="outline" size="sm">
@@ -96,21 +110,58 @@ export function ClarityHighlightsDialog({
                     className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 transition-colors hover:bg-slate-100"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-sm text-slate-700 shadow-sm">
+                      <p
+                        className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1 font-mono text-sm text-slate-700 shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
+                        onClick={() => {
+                          console.log("Phrase clicked:", highlight)
+                          console.log(
+                            "onHighlightPhrase function:",
+                            !!onHighlightPhrase
+                          )
+                          if (onHighlightPhrase) {
+                            console.log(
+                              "Calling onHighlightPhrase with:",
+                              highlight
+                            )
+                            onHighlightPhrase(highlight)
+                          } else {
+                            console.log("onHighlightPhrase is not available!")
+                          }
+                          setOpen(false)
+                        }}
+                        title="Click to highlight this phrase in the editor"
+                      >
                         "{highlight}"
                       </p>
                     </div>
-                    {onRewriteHighlight && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onRewriteHighlight(highlight)}
-                        className="shrink-0 border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100"
-                      >
-                        <Sparkles className="mr-1 size-3" />
-                        Make Clearer
-                      </Button>
-                    )}
+                    <div className="flex shrink-0 gap-2">
+                      {onHighlightPhrase && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            console.log("Find button clicked:", highlight)
+                            onHighlightPhrase(highlight)
+                            setOpen(false)
+                          }}
+                          className="border-slate-300 bg-white text-slate-600 hover:border-slate-400 hover:bg-slate-50"
+                        >
+                          <MapPin className="mr-1 size-3" />
+                          Find
+                        </Button>
+                      )}
+                      {onRewriteHighlight && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => onRewriteHighlight(highlight)}
+                          className="border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300 hover:bg-blue-100"
+                        >
+                          <Sparkles className="mr-1 size-3" />
+                          Make Clearer
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

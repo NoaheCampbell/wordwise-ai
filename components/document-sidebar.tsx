@@ -55,7 +55,8 @@ export function DocumentSidebar() {
     isLoading,
     isLoadingLiveScore,
     reloadDocuments,
-    reloadClarityScore
+    reloadClarityScore,
+    highlightPhrase
   } = useDocument()
 
   const onDocumentPage = pathname.includes("/document/")
@@ -142,6 +143,13 @@ export function DocumentSidebar() {
               {liveClarityScore && onDocumentPage ? (
                 <ClarityHighlightsDialog
                   clarityScore={liveClarityScore}
+                  onHighlightPhrase={(phrase: string) => {
+                    console.log(
+                      "SIDEBAR - onHighlightPhrase called with:",
+                      phrase
+                    )
+                    highlightPhrase(phrase)
+                  }}
                   trigger={
                     <div
                       className={`cursor-pointer rounded-lg border transition-colors ${
