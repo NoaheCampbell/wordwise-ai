@@ -255,14 +255,14 @@ export default function DocumentPage() {
             <EmailVerificationBanner />
           </div>
 
-          <main className="flex min-h-0 flex-1">
+          <main className="flex min-h-0 flex-1 overflow-hidden">
             {/* Main Editor Column */}
-            <div className="min-w-0 flex-[2] p-6">
+            <div className="min-w-0 flex-[2] overflow-hidden p-6">
               <EnhancedEditor initialDocument={document} />
             </div>
 
-            {/* AI Suggestions Panel */}
-            <div className="min-w-0 flex-1 border-l border-gray-200 bg-white">
+            {/* AI Suggestions Panel - Fixed height with internal scrolling */}
+            <div className="flex min-w-0 flex-1 flex-col border-l border-gray-200 bg-white">
               <AISuggestionsPanel />
             </div>
           </main>

@@ -2433,7 +2433,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [selectedSuggestion])
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className="flex h-full max-h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {document && (
