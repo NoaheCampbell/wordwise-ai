@@ -1852,18 +1852,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         setDeepHighlights(validHighlights)
         setSuggestions(validHighlights.map(h => h.suggestion))
 
-        // Show toast about loaded suggestions
+        // Log cached suggestions loading (no toast to avoid spam)
         const restoredCount = validHighlights.length
         const totalCount = result.data.length
-        if (restoredCount === totalCount) {
-          toast.info(
-            `Restored ${restoredCount} cached suggestion${restoredCount !== 1 ? "s" : ""}`
-          )
-        } else {
-          toast.info(
-            `Restored ${restoredCount} of ${totalCount} cached suggestions (${totalCount - restoredCount} had invalid positions)`
-          )
-        }
+        console.log(
+          `[Cache] Restored ${restoredCount} of ${totalCount} cached suggestions for document`
+        )
       }
     } catch (error) {
       console.error("Error loading cached suggestions:", error)
