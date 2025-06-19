@@ -2,6 +2,7 @@
 <ai_context>
 AI-powered research and ideation actions for Phase 5B features.
 Includes smart source finding, idea generation, and social snippet creation.
+Updated to use OpenAI's native web search preview instead of Perplexity API.
 </ai_context>
 */
 
@@ -12,17 +13,52 @@ import OpenAI from "openai"
 import { auth } from "@clerk/nextjs/server"
 import { createIdeaAction, createResearchSourceAction } from "@/actions/db/ideas-actions"
 import { db } from "@/db/db"
-import { documentsTable, SelectDocument, documentStatusEnum } from "@/db/schema"
+import {
+  documentsTable,
+  SelectDocument,
+  documentStatusEnum,
+  researchSourcesTable,
+  SelectResearchSource
+} from "@/db/schema"
 import { eq } from "drizzle-orm"
 import {
   DocumentAnalysis,
   EnhancedDocumentAnalysis,
   ResearchSource
 } from "@/types"
+import { ChatCompletionTool } from "openai/resources/index.mjs"
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY
 })
+
+async function getSearchKeywords(
+  title: string,
+  content: string
+): Promise<string[]> {
+  const keywordPrompt = `
+Analyze the following title and content to generate 5-7 concise, highly relevant keywords for a web search.
+Focus on the core concepts, entities, and topics.
+Return a JSON object with a "keywords" array.
+
+Title: ${title}
+Content: ${content.slice(0, 500)}
+
+Example:
+Title: "The Future of Renewable Energy"
+Content: "A look at solar, wind, and geothermal power..."
+Output: {"keywords": ["renewable energy future", "solar power trends", "wind energy innovation", "geothermal technology"]}
+`
+  const keywordResponse = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: keywordPrompt }],
+    response_format: { type: "json_object" }
+  })
+  const responseJson = JSON.parse(
+    keywordResponse.choices[0]?.message?.content || '{"keywords": []}'
+  )
+  return responseJson.keywords || []
+}
 
 // Rate limiting for research actions
 const researchRateLimiter = new Map<string, { count: number; resetTime: number }>()
@@ -61,6 +97,12 @@ interface ExternalSource {
   keywords: string[]
   relevanceScore: number
   sourceType: string
+}
+
+interface ArticleSource {
+  title: string
+  url: string
+  summary: string
 }
 
 /**
@@ -118,7 +160,7 @@ Content:
 }
 
 /**
- * Find relevant articles using OpenAI's web search.
+ * Find relevant articles using OpenAI's web search preview.
  */
 export async function findRelevantArticlesAction(
   keywords: string[],
@@ -140,117 +182,90 @@ export async function findRelevantArticlesAction(
     }
 
     const searchQuery = keywords.join(" ")
-    const sources: ExternalSource[] = []
+    console.log(`Searching OpenAI web search for: ${searchQuery}`)
 
-    let prompt = `
-Please perform a web search to find relevant articles and resources for the following query: "${searchQuery}"
-
-Return a JSON object with a "sources" array. Each object in the array should have the following structure:
-{
-  "title": "Article Title",
-  "url": "https://example.com/article",
-  "summary": "A brief summary of the article content.",
-  "sourceType": "article"
-}
-
-Please provide at least 5 high-quality sources. The summary should be concise and informative. The output must be only the raw JSON object.
-`
+    // Build domain restrictions if provided
+    let domainInstructions = ""
     if (allowedDomains.length > 0) {
-      prompt += `\nIMPORTANT: Only include results from the following domains or TLDs: ${allowedDomains.join(
-        ", "
-      )}.`
+      domainInstructions += ` Focus on results from these domains: ${allowedDomains.join(", ")}.`
     }
     if (disallowedDomains.length > 0) {
-      prompt += `\nIMPORTANT: Do NOT include results from the following domains: ${disallowedDomains.join(
-        ", "
-      )}.`
+      domainInstructions += ` Avoid results from these domains: ${disallowedDomains.join(", ")}.`
     }
+
+    const searchPrompt = `Find 5 high-quality, relevant articles about: ${searchQuery}${domainInstructions}.
+
+For each article, provide the title, URL, and a concise summary (2-3 sentences) in this exact format:
+
+1. Title: [Article Title]
+   URL: [Article URL]
+   Summary: [A concise summary of the article]
+
+Focus on recent, authoritative sources that would be valuable for research and content creation.`
 
     const response = await openai.responses.create({
       model: "gpt-4o",
-      tools: [{ type: "web_search_preview" }],
-      input: prompt,
-      instructions:
-        "You are a research assistant. Your task is to find relevant online articles, blog posts, and other resources based on the user's query and return them in the specified JSON format."
+      input: searchPrompt,
+      tools: [{ type: "web_search_preview" }]
     })
 
-    const responseText = response.output_text
-    let result
+    // Extract web search results from the response
+    const output = response.output || []
+    let searchResults: any[] = []
+    let assistantMessage = ""
 
-    try {
-      const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/)
-      if (jsonMatch && jsonMatch[1]) {
-        result = JSON.parse(jsonMatch[1])
-      } else {
-        result = JSON.parse(responseText)
-      }
-    } catch (e) {
-      console.error("Failed to parse JSON from OpenAI response", e, responseText)
-      return {
-        isSuccess: false,
-        message: "Failed to parse search results from AI."
-      }
-    }
-
-    let apiSources = (result.sources || []) as any[]
-
-    // Filter sources based on domain restrictions
-    if (allowedDomains.length > 0) {
-      apiSources = apiSources.filter(source => {
-        if (!source.url) return false
-        try {
-          const hostname = new URL(source.url).hostname
-          return allowedDomains.some(domain => hostname.endsWith(domain))
-        } catch {
-          return false
+    // Parse the response output to find web search results and assistant message
+    for (const item of output) {
+      if (item.type === "web_search_call") {
+        // Web search was performed
+        continue
+      } else if (item.type === "message" && item.role === "assistant") {
+        // Handle both ResponseOutputText and ResponseOutputRefusal
+        const textContent = item.content?.[0]
+        if (textContent && "text" in textContent) {
+          assistantMessage = textContent.text || ""
         }
-      })
-    }
-
-    if (disallowedDomains.length > 0) {
-      apiSources = apiSources.filter(source => {
-        if (!source.url) return false
-        try {
-          const hostname = new URL(source.url).hostname
-          return !disallowedDomains.some(domain => hostname.includes(domain))
-        } catch {
-          return false
-        }
-      })
-    }
-
-    if (apiSources && Array.isArray(apiSources)) {
-      apiSources.forEach((source: any, index: number) => {
-        if (source.url && source.title && source.summary) {
-          try {
-            const urlHost = new URL(source.url).hostname
-            sources.push({
-              title: source.title,
-              url: source.url,
-              summary: source.summary,
-              snippet: `[${source.title}](${source.url}) - ${urlHost}`,
-              keywords: keywords,
-              relevanceScore: 95 - index * 5,
-              sourceType: source.sourceType || "article"
-            })
-          } catch (e) {
-            console.warn(`Invalid URL found in search result: ${source.url}`)
-          }
-        }
-      })
-    }
-
-    if (sources.length === 0) {
-      return {
-        isSuccess: false,
-        message:
-          "No articles found that match your criteria. Please try different keywords or adjust your domain filters."
       }
     }
 
-    // Save sources to database if documentId provided
-    if (documentId && sources.length > 0) {
-      const savePromises = sources.map(source =>
+    if (assistantMessage) {
+      console.log("ASSISTANT MESSAGE:", assistantMessage) // For debugging
+
+      const articleRegex =
+        /^\s*\d+\.\s*\*\*Title:\*\*\s*([^\n]+)\s*\n\s*\*\*URL:\*\*\s*\(\[.*?\]\(([^)]+)\)\)\s*\n\s*\*\*Summary:\*\*\s*([^\n]+)/gm
+      const matches = [...assistantMessage.matchAll(articleRegex)]
+
+      console.log(`Found ${matches.length} articles from assistant message.`)
+
+      searchResults = matches.slice(0, 5).map(match => ({
+        title: (match[1] || "").trim().replace(/^"|"$/g, ""),
+        url: (match[2] || "").trim(),
+        summary: (match[3] || "").trim()
+      }))
+    }
+
+    if (searchResults.length === 0) {
+      return { 
+        isSuccess: false, 
+        message: "No articles found in web search results." 
+      }
+    }
+
+    const externalSources: ExternalSource[] = searchResults
+      .slice(0, 5)
+      .map((source: any, index: number) => ({
+        title: source.title,
+        url: source.url,
+        summary: source.summary,
+        snippet: `[${source.title}](${source.url})`,
+        keywords: keywords,
+        relevanceScore: 95 - index * 5,
+        sourceType: "article"
+      }))
+
+    // Save research sources to database if documentId is provided
+    if (documentId && externalSources.length > 0) {
+      const savePromises = externalSources.map(source =>
         createResearchSourceAction({
           documentId,
           title: source.title,
@@ -262,8 +277,6 @@ Please provide at least 5 high-quality sources. The summary should be concise an
           sourceType: source.sourceType
         })
       )
-
-      // Execute saves in parallel but don't wait for completion
       Promise.all(savePromises).catch(error => {
         console.error("Error saving research sources:", error)
       })
@@ -271,11 +284,11 @@ Please provide at least 5 high-quality sources. The summary should be concise an
 
     return {
       isSuccess: true,
-      message: `Found ${sources.length} relevant articles`,
-      data: sources
+      message: `Found ${externalSources.length} articles using OpenAI web search`,
+      data: externalSources
     }
   } catch (error) {
-    console.error("Error finding relevant articles:", error)
+    console.error("Error in findRelevantArticlesAction:", error)
     if (error instanceof OpenAI.APIError) {
       return {
         isSuccess: false,
@@ -284,7 +297,7 @@ Please provide at least 5 high-quality sources. The summary should be concise an
     }
     return {
       isSuccess: false,
-      message: "Failed to find relevant articles due to an unexpected error."
+      message: "Failed to find articles due to an exception."
     }
   }
 }
@@ -756,145 +769,6 @@ export async function saveIdeaAction(
 /**
  * Convert an idea into a new document with recommended sources
  */
-// Quick enhanced content generation (synchronous, no AI calls)
-function generateQuickEnhancedContent(
-  ideaTitle: string,
-  ideaContent: string,
-  ideaType: string
-): string {
-  if (ideaType === "headline") {
-    return `# ${ideaTitle}
-
-## Introduction
-${ideaContent}
-
-## Key Points
-- [Add your main arguments and insights here]
-- [Supporting evidence or examples]
-- [Additional key points]
-
-## Evidence & Research
-[Add credible sources, statistics, expert quotes, or case studies]
-
-## Implications
-[Discuss what this means for your audience - why should they care?]
-
-## Conclusion
-[Tie everything together and reinforce the main message]
-
-## Call to Action
-[What do you want readers to do after reading this?]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else if (ideaType === "topic_suggestion") {
-    return `# ${ideaTitle}
-
-## Executive Summary
-${ideaContent}
-
-## Background & Context
-[Historical context, current state, why this topic matters now]
-
-## Key Themes & Trends
-### Theme 1: [Insert Theme]
-[Analysis of first major theme]
-
-### Theme 2: [Insert Theme]  
-[Analysis of second major theme]
-
-### Theme 3: [Insert Theme]
-[Analysis of third major theme]
-
-## Stakeholders & Perspectives
-### Primary Stakeholders
-- [Who is most affected by this topic?]
-- [What are their interests and concerns?]
-
-### Secondary Stakeholders
-- [Who else has a stake in this topic?]
-- [How might they be impacted?]
-
-## Current Challenges & Opportunities
-### Challenges
-- [Major obstacle #1]
-- [Major obstacle #2]
-- [Major obstacle #3]
-
-### Opportunities
-- [Potential solution or opportunity #1]
-- [Potential solution or opportunity #2]
-- [Potential solution or opportunity #3]
-
-## Future Outlook
-[Where is this topic heading? What changes do you anticipate?]
-
-## Recommendations
-1. [Actionable recommendation #1]
-2. [Actionable recommendation #2]
-3. [Actionable recommendation #3]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else if (ideaType === "outline") {
-    return `# ${ideaTitle}
-
-## Initial Framework
-${ideaContent}
-
-## Detailed Structure
-
-### Section 1: [Title]
-[Develop the first major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-### Section 2: [Title]  
-[Develop the second major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-### Section 3: [Title]
-[Develop the third major section]
-- Key points to cover:
-- Supporting evidence needed:
-- Examples to include:
-
-## Research Requirements
-[What information do you need to gather to support this outline?]
-
-## Next Steps
-1. [First development priority]
-2. [Second development priority]
-3. [Third development priority]
-
----
-*Research sources will be automatically added below as you find them.*`
-  } else {
-    return `# ${ideaTitle}
-
-${ideaContent}
-
-## Development Notes
-[Use this space to expand on your initial idea]
-
-## Research & Evidence
-[Add supporting information, sources, and data]
-
-## Next Steps
-[What actions need to be taken to develop this further?]
-
----
-*Research sources will be automatically added below as you find them.*`
-  }
-}
-
-/**
- * Creates a document from an idea.
- * This just creates the entry in the database. The content generation is handled by another action.
- */
 export async function convertIdeaToDocumentAction(
   ideaId: string,
   ideaTitle: string
@@ -935,7 +809,8 @@ export async function convertIdeaToDocumentAction(
 }
 
 /**
- * Generates the full content for a document that was created from an idea.
+ * Generate a document from an idea, including finding relevant articles.
+ * This action is the first step and hands off to writeDocumentDraftAction.
  */
 export async function generateDocumentFromIdeaAction(
   documentId: string,
@@ -949,52 +824,114 @@ export async function generateDocumentFromIdeaAction(
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    // 1. Generate the actual content
-    const generatedContent = generateQuickEnhancedContent(
-      ideaTitle,
-      ideaContent,
-      ideaType
-    )
-
-    // 2. Update the document with the new content and status
-    const [updatedDocument] = await db
+    // This is the trigger action. It's fast.
+    await db
       .update(documentsTable)
-      .set({
-        content: generatedContent,
-        status: "complete",
-        updatedAt: new Date()
-      })
+      .set({ status: "finding_sources" })
       .where(eq(documentsTable.id, documentId))
-      .returning({ id: documentsTable.id })
 
-    if (!updatedDocument) {
-      await db
-        .update(documentsTable)
-        .set({ status: "failed" })
-        .where(eq(documentsTable.id, documentId))
-      return { isSuccess: false, message: "Failed to update document content." }
-    }
-
-    // 3. Delete the original idea (optional, but good for cleanup)
-    // We are not deleting the idea anymore to keep it for user's reference
-    // await db.delete(ideasTable).where(eq(ideasTable.id, ideaId));
+    // Run the full generation process in the background (fire and forget)
+    await writeFullDocumentAction(documentId, ideaTitle, ideaContent, ideaType)
 
     return {
       isSuccess: true,
-      message: "Document content generated successfully",
-      data: { documentId: updatedDocument.id }
+      message: "Document generation process started.",
+      data: { documentId }
     }
   } catch (error) {
-    console.error("Error generating document content from idea:", error)
-    // Set status to failed on error
+    console.error("Error starting document generation:", error)
     await db
       .update(documentsTable)
       .set({ status: "failed" })
       .where(eq(documentsTable.id, documentId))
     return {
       isSuccess: false,
-      message: "Failed to generate document content."
+      message: "Failed to start document generation."
     }
+  }
+}
+
+async function generateFullDocumentContent(
+  ideaTitle: string,
+  ideaContent: string,
+  sources: ArticleSource[]
+): Promise<string> {
+  let prompt = `You are an expert writer. Write a comprehensive, well-structured, and engaging document.
+Base the content on the provided idea and research articles.
+The document should have a clear introduction, body, and conclusion.
+Cite articles using markdown links where appropriate: [Source 1](https://example.com).
+
+**Idea Title:** ${ideaTitle}
+**Idea Details:** ${ideaContent}`
+
+  if (sources.length > 0) {
+    prompt += `\n\n**Research Articles (use these for content and citations):**
+${sources
+  .map(
+    (article, index) =>
+      `${index + 1}. ${article.title} - ${article.summary}\nURL: ${
+        article.url
+      }`
+  )
+  .join("\n\n")}`
+  }
+
+  prompt += `\n\nGenerate the full document content now.`
+
+  const contentResponse = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.7,
+    max_tokens: 3000 // Increased max tokens for a full document
+  })
+
+  return contentResponse.choices[0]?.message?.content || ""
+}
+
+/**
+ * orchestrates the multi-step document writing process.
+ */
+export async function writeFullDocumentAction(
+  documentId: string,
+  ideaTitle: string,
+  ideaContent: string,
+  ideaType: string
+) {
+  try {
+    // 1. Find relevant articles
+    await db
+      .update(documentsTable)
+      .set({ status: "finding_sources" })
+      .where(eq(documentsTable.id, documentId))
+
+    const keywords = await getSearchKeywords(ideaTitle, ideaContent)
+    const articlesResult = await findRelevantArticlesAction(keywords, documentId)
+    const sources = articlesResult.isSuccess ? articlesResult.data : []
+    console.log(`Found ${sources.length} sources to generate document.`)
+
+    // 2. Write Full Document in one go
+    await db
+      .update(documentsTable)
+      .set({ status: "writing_body" }) // A single "writing" status is enough now
+      .where(eq(documentsTable.id, documentId))
+
+    const fullContent = await generateFullDocumentContent(
+      ideaTitle,
+      ideaContent,
+      sources
+    )
+
+    // 3. Update document with content and set status to complete
+    await db
+      .update(documentsTable)
+      .set({ content: fullContent, status: "complete" })
+      .where(eq(documentsTable.id, documentId))
+  } catch (error) {
+    console.error("Error in writeFullDocumentAction:", error)
+    await db
+      .update(documentsTable)
+      .set({ status: "failed" })
+      .where(eq(documentsTable.id, documentId))
   }
 }
 
@@ -1356,4 +1293,4 @@ export async function generateIdeasFromCorpusAction(
     message: "Ideas generated successfully from your documents!",
     data: generationResult.data
   }
-} 
+}

@@ -5,12 +5,30 @@ import { Lightbulb, FileText, Sparkles } from "lucide-react"
 interface DocumentGeneratingProps {
   ideaTitle?: string
   ideaType?: string
+  status?: string | null
 }
 
 export function DocumentGenerating({
   ideaTitle,
-  ideaType
+  ideaType,
+  status
 }: DocumentGeneratingProps) {
+  const getStatusMessage = () => {
+    switch (status) {
+      case "generating":
+        return "Initializing document generation..."
+      case "finding_sources":
+        return "Finding relevant research sources..."
+      case "writing_introduction":
+        return "Writing the introduction..."
+      case "writing_body":
+        return "Crafting the main content..."
+      case "writing_conclusion":
+        return "Finalizing with a conclusion..."
+      default:
+        return "Our AI is crafting content based on your idea. This may take a moment."
+    }
+  }
   return (
     <div className="flex min-h-[500px] w-full flex-col items-center justify-center rounded-lg border-2 border-dashed bg-gray-50 p-8 text-center">
       <div className="mb-4 flex size-16 items-center justify-center rounded-full bg-blue-100">
@@ -20,8 +38,7 @@ export function DocumentGenerating({
         Generating your document...
       </h2>
       <p className="text-muted-foreground mb-6 max-w-md text-gray-600">
-        Our AI is crafting content based on your idea. This may take a moment.
-        Please don't close this page.
+        {getStatusMessage()}
       </p>
 
       {ideaTitle && (
