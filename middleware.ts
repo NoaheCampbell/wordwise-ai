@@ -14,7 +14,6 @@ const isProtectedRoute = createRouteMatcher(["/", "/profile", "/settings", "/doc
 // Routes that require an active (or trialing) Pro subscription
 const isProRoute = createRouteMatcher([
   "/dashboard/:path*",
-  "/idea-generator-demo",
   "/ideas/:path*",
   "/document/:path*"
 ])
