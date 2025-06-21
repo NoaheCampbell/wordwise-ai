@@ -1,5 +1,5 @@
 /**
- * AI Prompt Templates for WordWise AI
+ * AI Prompt Templates for Plotnotes
  * Organized by content type and use case
  */
 

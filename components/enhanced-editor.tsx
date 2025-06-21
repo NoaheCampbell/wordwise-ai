@@ -258,14 +258,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   // Context-aware analysis state with localStorage persistence
   const [contextAwareEnabled, setContextAwareEnabled] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("wordwise-context-aware-enabled")
+      const saved = localStorage.getItem("plotnotes-context-aware-enabled")
       return saved !== null ? JSON.parse(saved) : true
     }
     return true
   })
   const [autoTriggerEnabled, setAutoTriggerEnabled] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("wordwise-auto-trigger-enabled")
+      const saved = localStorage.getItem("plotnotes-auto-trigger-enabled")
       return saved !== null ? JSON.parse(saved) : true // Default to true
     }
     return true // Default to true
@@ -1952,7 +1952,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setContextAwareEnabled(enabled)
     if (typeof window !== "undefined") {
       localStorage.setItem(
-        "wordwise-context-aware-enabled",
+        "plotnotes-context-aware-enabled",
         JSON.stringify(enabled)
       )
     }
@@ -1962,7 +1962,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     setAutoTriggerEnabled(enabled)
     if (typeof window !== "undefined") {
       localStorage.setItem(
-        "wordwise-auto-trigger-enabled",
+        "plotnotes-auto-trigger-enabled",
         JSON.stringify(enabled)
       )
     }

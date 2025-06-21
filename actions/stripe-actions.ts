@@ -78,6 +78,7 @@ export async function createCheckoutSessionAction(): Promise<
       mode: "subscription",
       payment_method_types: ["card"],
       customer: stripeCustomerId,
+      allow_promotion_codes: true,
       line_items: [
         {
           price: priceId,

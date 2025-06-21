@@ -11,7 +11,7 @@ export function Editor() {
 
 Dear Valued Subscribers,
 
-We're thrilled to share some incredible updates about WordWise AI that will revolutionize your writing experience.
+We're thrilled to share some incredible updates about Plotnotes that will revolutionize your writing experience.
 
 Our latest features include:
 • Advanced grammar and style suggestions
@@ -22,7 +22,7 @@ Our latest features include:
 These improvements have helped our users increase their engagement rates by up to 40%. We believe these tools will help you create more compelling content that resonates with your audience.
 
 Best regards,
-The WordWise AI Team`)
+The Plotnotes Team`)
 
   return (
     <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">

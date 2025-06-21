@@ -90,7 +90,7 @@ export default function BillingClient({
             <div className="flex items-center gap-2">
               <Sparkles className="size-6 text-blue-600" />
               <h1 className="text-xl font-semibold text-gray-900">
-                WordWise AI Pro
+                Plotnotes Pro
               </h1>
             </div>
 
@@ -150,7 +150,7 @@ export default function BillingClient({
                 </div>
               </div>
               <CardTitle className="text-2xl font-bold text-gray-900 dark:text-gray-900">
-                WordWise AI Pro
+                Plotnotes Pro
               </CardTitle>
               <div className="mt-4 flex items-center justify-center gap-2">
                 <span className="text-4xl font-bold text-gray-900 dark:text-gray-900">
@@ -204,7 +204,7 @@ export default function BillingClient({
           <div className="space-y-6">
             <div>
               <h3 className="mb-4 text-xl font-semibold text-gray-900">
-                Why Choose WordWise AI Pro?
+                Why Choose Plotnotes Pro?
               </h3>
               <div className="grid gap-4">
                 {features.map((feature, index) => (

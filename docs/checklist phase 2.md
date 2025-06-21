@@ -1,4 +1,4 @@
-# WordWise AI – Phase 2 Development Checklist  
+# Plotnotes – Phase 2 Development Checklist  
 *(AI Enhancement: Days 4 – 7)*  
 
 This document breaks the Phase 2 roadmap into clear **Phases → Features → Sub-features** so any newcomer can follow development step-by-step.

@@ -8,7 +8,7 @@
 1. Go to [supabase.com](https://supabase.com) and sign up/login
 2. Click "New Project"
 3. Choose your organization and set project details:
-   - **Name**: wordwise-ai
+   - **Name**: plotnotes
    - **Database Password**: Choose a strong password
    - **Region**: Choose closest to your users
    - **Pricing Plan**: Start with Free tier
