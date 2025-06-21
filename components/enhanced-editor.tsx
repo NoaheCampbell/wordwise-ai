@@ -224,6 +224,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const [showShareDialog, setShowShareDialog] = useState(false)
   const [selectedSuggestion, setSelectedSuggestion] =
     useState<AISuggestion | null>(null)
+  const [selectionToRewrite, setSelectionToRewrite] = useState<{
+    start: number
+    end: number
+    text: string
+  } | null>(null)
   const [lastAnalysisTime, setLastAnalysisTime] = useState(0)
   const [analysisCount, setAnalysisCount] = useState(0)
   const [currentTime, setCurrentTime] = useState(Date.now())
@@ -244,6 +249,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   const lastAnalyzedText = useRef({ spelling: "", full: "" })
   const lastCursorPosition = useRef(0)
   const lastContentLength = useRef(0)
+  const toolbarRef = useRef<HTMLDivElement>(null)
 
   // Research & Ideas state
   const [isResearchPanelOpen, setIsResearchPanelOpen] = useState(false)
@@ -1028,80 +1034,52 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     return { isValid: true }
   }
 
-  // Enhanced rewrite function with sentence boundary validation
   const handleRewriteWithValidation = async (
     tone: string,
     originalText?: string
   ) => {
-    let textToRewrite: string
-    let start: number
-    let end: number
-
-    if (originalText) {
-      // Rewriting from a suggestion - find the text in the content
-      const index = contentRef.current.indexOf(originalText)
-      if (index === -1) {
-        toast.error(
-          "Could not find the text to rewrite. Please try selecting it manually."
-        )
-        return
-      }
-      textToRewrite = originalText
-      start = index
-      end = index + originalText.length
-    } else {
-      // Rewriting from user selection
-      if (!contentRef.current.trim()) {
-        toast.info("There is no text to rewrite.")
-        return
-      }
-
-      const selectionInfo = getSelectionRange()
-      if (!selectionInfo) {
-        toast.info("Please select the text segment you want to rewrite.")
-        return
-      }
-
-      textToRewrite = selectionInfo.text
-      start = selectionInfo.start
-      end = selectionInfo.end
+    const selection =
+      preservedSelection || selectionToRewrite || getSelectionRange()
+    if (!selection || !selection.text) {
+      toast.error(
+        "Please select the text you want to rewrite, or provide text to the function."
+      )
+      return
     }
 
-    // Validate the text for rewriting
+    const textToRewrite = originalText || selection.text
     const validation = validateTextForRewrite(textToRewrite)
     if (!validation.isValid) {
-      toast.error(validation.message || "Invalid text selection for rewriting.")
+      toast.error(validation.message)
       return
     }
 
     setIsRewriting(true)
-    const result = await rewriteWithToneAction(textToRewrite, tone)
-    setIsRewriting(false)
+    try {
+      const result = await rewriteWithToneAction(textToRewrite, tone)
 
-    if (result.isSuccess) {
-      const rewrittenSegment = result.data
+      if (result.isSuccess && result.data) {
+        const { start, end } = selection
+        const newContent =
+          content.substring(0, start) + result.data + content.substring(end)
+        handleContentChange(newContent)
 
-      const newContent =
-        contentRef.current.slice(0, start) +
-        rewrittenSegment +
-        contentRef.current.slice(end)
+        // Clear selection after rewrite
+        setSelectionToRewrite(null)
+        setPreservedSelection(null)
+        if (textareaRef.current) {
+          textareaRef.current.focus()
+          setCursorPosition(textareaRef.current, start + result.data.length)
+        }
 
-      contentRef.current = newContent
-      setContent(newContent)
-      setContentForWordCount(newContent)
-
-      // Update history
-      setHistory(prevHistory => [...prevHistory, newContent])
-      setCurrentHistoryIndex(prevIndex => prevIndex + 1)
-
-      // Clear any existing highlights and suggestions (they may be stale)
-      setDeepHighlights([])
-      setRealTimeHighlights([])
-      setSuggestions([])
-
-      toast.success(`Text rewritten in a ${tone.toLowerCase()} tone.`)
-    } else {
-      toast.error(result.message)
+        toast.success(`Content rewritten with ${tone} tone.`)
+      } else {
+        toast.error(result.message || "Failed to rewrite content.")
+      }
+    } catch (error) {
+      toast.error("An error occurred during rewrite.")
+    } finally {
+      setIsRewriting(false)
     }
   }
 
@@ -1109,7 +1087,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     await handleRewriteWithValidation(tone)
   }
 
-  // Handle rewriting clarity highlights
   const handleRewriteHighlight = async (highlightText: string) => {
     await handleRewriteWithValidation("Clear", highlightText)
   }
@@ -2412,52 +2389,22 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       return
     }
 
-    const oldContent = contentRef.current
-    const oldLength = lastContentLength.current
-    const newLength = newContent.length
-    const lengthDiff = newLength - oldLength
-
-    // Calculate rough edit position based on cursor and content length change
-    const cursorPos = lastCursorPosition.current
-    let editStart = cursorPos
-    let editEnd = cursorPos
-
-    if (lengthDiff > 0) {
-      // Text was inserted
-      editEnd = editStart + lengthDiff
-    } else if (lengthDiff < 0) {
-      // Text was deleted
-      editEnd = editStart - lengthDiff
-    }
-
-    // Only remove highlights that are directly affected by the edit
-    setRealTimeHighlights(prevHighlights =>
-      prevHighlights.filter(h => {
-        // Keep highlights that don't overlap with the edited region
-        const highlightBeforeEdit = h.end <= editStart
-        const highlightAfterEdit = h.start >= editEnd
-        const highlightStillValid =
-          h.start < newContent.length &&
-          h.end <= newContent.length &&
-          h.start < h.end &&
-          newContent.substring(h.start, h.end) === h.suggestion.originalText
-
-        return (
-          (highlightBeforeEdit || highlightAfterEdit) && highlightStillValid
-        )
-      })
-    )
-
     contentRef.current = newContent
     setContentForWordCount(newContent)
     setCurrentContent(newContent) // Update provider with current content
 
-    // Trigger auto-suggestions if enabled
-    if (autoTriggerEnabled) {
-      debouncedAutoTrigger(newContent)
+    if (
+      !isUpdatingFromEffect.current &&
+      newContent !== (history[currentHistoryIndex] || "")
+    ) {
+      const newHistory = history.slice(0, currentHistoryIndex + 1)
+      newHistory.push(newContent)
+      setHistory(newHistory)
+      setCurrentHistoryIndex(newHistory.length - 1)
     }
+
     setHasManuallyEdited(true)
-    lastContentLength.current = newLength
+    lastContentLength.current = newContent.length
 
     // Debounced clarity score update (700ms as per guidelines)
     if (debouncedClarityUpdate.current) {
@@ -2468,51 +2415,50 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         updateLiveClarityScore(newContent)
       }
     }, 700)
-
-    if (newContent !== (history[currentHistoryIndex] || "")) {
-      const newHistory = history.slice(0, currentHistoryIndex + 1)
-      setHistory([...newHistory, newContent])
-      setCurrentHistoryIndex(newHistory.length)
-    }
   }
 
   const handleSelectionChange = (e?: React.MouseEvent<HTMLDivElement>) => {
-    // Handle clicking on highlighted spans
-    if (e && e.target instanceof HTMLElement) {
-      const clickedElement = e.target as HTMLElement
-      const suggestionId = clickedElement.getAttribute("data-suggestion-id")
-
-      if (suggestionId) {
-        e.preventDefault()
-        const highlight = highlights.find(h => h.suggestion.id === suggestionId)
-        if (highlight) {
-          setSelectedSuggestion(highlight.suggestion)
-          return
-        }
+    // Prevent selection change from firing when a popover is clicked
+    if (e) {
+      const target = e.target as HTMLElement
+      if (target.closest("[data-radix-popper-content-wrapper]")) {
+        return
       }
     }
 
-    // Update selection state
-    updateSelectionState()
-
-    // Update cursor position
     const selection = window.getSelection()
-    if (selection && selection.rangeCount > 0 && textareaRef.current) {
+    if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0)
-      const preCaretRange = range.cloneRange()
-      preCaretRange.selectNodeContents(textareaRef.current)
-      preCaretRange.setEnd(range.endContainer, range.endOffset)
-      const newCursorPos = preCaretRange.toString().length
-      lastCursorPosition.current = newCursorPos
+      if (
+        textareaRef.current &&
+        textareaRef.current.contains(range.commonAncestorContainer)
+      ) {
+        const preSelectionRange = window.document.createRange()
+        preSelectionRange.selectNodeContents(textareaRef.current)
+        preSelectionRange.setEnd(range.startContainer, range.startOffset)
+        const start = preSelectionRange.toString().length
+        const end = start + range.toString().length
+
+        if (end > start) {
+          setSelectionToRewrite({ start, end, text: range.toString() })
+          return // Keep selection stored for rewrite
+        }
+      }
     }
+    // If no text is selected, clear the stored selection
+    setSelectionToRewrite(null)
+    setPreservedSelection(null)
   }
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    if (isUpdatingFromEffect.current) return
     const newContent = e.currentTarget.innerText
     const cursorPosition = getCursorPosition(e.currentTarget)
     lastCursorPosition.current = cursorPosition
     handleContentChange(newContent)
     setCursorPosition(e.currentTarget, cursorPosition)
+    setSelectionToRewrite(null) // Clear rewrite selection on input
+    setPreservedSelection(null)
   }
 
   const handleUndo = () => {
@@ -2755,6 +2701,69 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }, [selectedSuggestion])
 
+  useEffect(() => {
+    const toolbar = toolbarRef.current
+    if (toolbar) {
+      const handleMouseDown = (e: MouseEvent) => {
+        // This prevents the editor from losing focus when a toolbar button is clicked,
+        // which in turn preserves the visual text selection.
+        e.preventDefault()
+      }
+      toolbar.addEventListener("mousedown", handleMouseDown)
+      return () => {
+        toolbar.removeEventListener("mousedown", handleMouseDown)
+      }
+    }
+  }, [])
+
+  // Set up selection change listeners
+  useEffect(() => {
+    const handleGlobalSelectionChange = () => {
+      updateSelectionState()
+    }
+
+    const toolbar = toolbarRef.current
+
+    // Listen for selection changes on the global document
+    if (typeof window !== "undefined" && window.document) {
+      const globalDoc = window.document
+      globalDoc.addEventListener("selectionchange", handleGlobalSelectionChange)
+
+      if (toolbar) {
+        const handleMouseDown = (e: MouseEvent) => {
+          e.preventDefault()
+        }
+        toolbar.addEventListener("mousedown", handleMouseDown)
+
+        return () => {
+          globalDoc.removeEventListener(
+            "selectionchange",
+            handleGlobalSelectionChange
+          )
+          toolbar.removeEventListener("mousedown", handleMouseDown)
+        }
+      }
+
+      return () => {
+        globalDoc.removeEventListener(
+          "selectionchange",
+          handleGlobalSelectionChange
+        )
+      }
+    }
+  }, [updateSelectionState])
+
+  useEffect(() => {
+    const sortedSuggestions = highlights
+      .map(h => h.suggestion)
+      .sort((a, b) => {
+        const priorityA = SUGGESTION_PRIORITY[a.type] || 99
+        const priorityB = SUGGESTION_PRIORITY[b.type] || 99
+        return priorityA - priorityB
+      })
+    setSuggestions(sortedSuggestions)
+  }, [highlights, setSuggestions])
+
   const isDemo =
     isDemoUser(user?.id) || isDemoEmail(user?.primaryEmailAddress?.emailAddress)
 
@@ -2920,7 +2929,10 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b p-2">
+      <div
+        ref={toolbarRef}
+        className="flex flex-wrap items-center gap-2 border-b p-2"
+      >
         <Button variant="outline" size="icon" onClick={handleUndo}>
           <Undo className="size-4" />
         </Button>
@@ -2970,7 +2982,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
         <TooltipProvider>
           <div className="flex items-center gap-2">
-            <DropdownMenu>
+            <DropdownMenu
+              onOpenChange={open => {
+                if (open) {
+                  preserveSelection()
+                }
+              }}
+            >
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -3017,7 +3035,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <DropdownMenu>
+            <DropdownMenu
+              onOpenChange={open => {
+                if (open) {
+                  preserveSelection()
+                }
+              }}
+            >
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -3132,7 +3156,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <DropdownMenu>
+            <DropdownMenu
+              onOpenChange={open => {
+                if (open) {
+                  preserveSelection()
+                }
+              }}
+            >
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
@@ -3169,7 +3199,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     handleContentExtension("precede")
                   }}
                 >
-                  ◀️ Add Introduction
+                  ◀️ Write What Comes Before
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onSelect={e => {
@@ -3177,7 +3207,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
                     handleContentExtension("expand_section")
                   }}
                 >
-                  🔍 Expand Details
+                  💥 Expand on This
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

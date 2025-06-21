@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import {
   FileText,
   Search,
-  Filter,
   TrendingUp,
   BarChart3,
   Plus,
@@ -21,21 +20,12 @@ import { toast } from "sonner"
 import { useState } from "react"
 import { useDocument } from "@/components/utilities/document-provider"
 
-const tags = [
-  "Newsletter",
-  "Email",
-  "Blog",
-  "Product",
-  "AI",
-  "Tips",
-  "Onboarding"
-]
-
 export function DocumentSidebar() {
   const { user } = useUser()
   const router = useRouter()
   const pathname = usePathname()
   const [isCreating, setIsCreating] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
   const {
     documents,
     clarityScore,
@@ -86,11 +76,6 @@ export function DocumentSidebar() {
     setIsCreating(false)
   }
 
-  const handleTagClick = (tag: string) => {
-    // TODO: Implement tag filtering
-    console.log("Filtering by tag:", tag)
-  }
-
   const handleDocumentClick = (documentId: string) => {
     router.push(`/document/${documentId}`)
   }
@@ -107,19 +92,17 @@ export function DocumentSidebar() {
     return date.toLocaleDateString()
   }
 
+  const filteredDocuments = documents.filter(doc =>
+    (doc.title || "Untitled Document")
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase())
+  )
+
   return (
     <div className="flex h-full max-h-screen flex-col border-r border-gray-300 bg-white">
       {/* Header - Fixed */}
       <div className="shrink-0 border-b border-gray-200 bg-white p-4">
-        <div className="space-y-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-500" />
-            <Input
-              placeholder="Search documents..."
-              className="border-gray-300 bg-white pl-10 text-gray-900 placeholder:text-gray-500"
-            />
-          </div>
-        </div>
+        <div className="space-y-3"></div>
       </div>
 
       {/* Quick Stats Section - Fixed */}
@@ -289,36 +272,14 @@ export function DocumentSidebar() {
       {/* Separator */}
       <div className="shrink-0 border-t border-gray-200" />
 
-      {/* Filter by Tags Section - Fixed */}
-      <div className="shrink-0 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wide text-gray-700">
-            Filter by Tags
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="size-6 p-0 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
-          >
-            <Filter className="size-3" />
-          </Button>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {tags.map(tag => (
-            <Badge
-              key={tag}
-              variant="secondary"
-              className="cursor-pointer border border-gray-300 bg-gray-200 text-xs text-gray-800 transition-colors hover:bg-gray-300"
-              onClick={() => handleTagClick(tag)}
-            >
-              {tag}
-            </Badge>
-          ))}
+      {/* Tags Section - Fixed */}
+      <div className="shrink-0 border-b border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-700">
+            Recent Documents
+          </div>
         </div>
       </div>
-
-      {/* Separator */}
-      <div className="shrink-0 border-t border-gray-200" />
 
       {/* Recent Documents Section - Scrollable */}
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -337,39 +298,51 @@ export function DocumentSidebar() {
               <Plus className="size-3" />
             </Button>
           </div>
+          <div className="relative pb-4">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              placeholder="Search documents..."
+              className="border-gray-300 bg-white pl-10 text-gray-900 placeholder:text-gray-500"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
           <div className="space-y-2">
             {isLoading ? (
               <div className="p-4 text-center text-gray-600">
                 <div className="mx-auto mb-2 size-6 animate-spin rounded-full border-b-2 border-blue-600"></div>
                 <p className="text-sm">Loading documents...</p>
               </div>
-            ) : documents.length === 0 ? (
+            ) : filteredDocuments.length === 0 ? (
               <div className="rounded-lg border border-gray-200 bg-white p-4 text-center text-gray-600">
                 <FileText className="mx-auto mb-2 size-8 text-gray-400" />
                 <p className="mb-2 text-sm font-medium text-gray-800">
-                  No documents yet
+                  {searchTerm ? "No matching documents" : "No documents yet"}
                 </p>
                 <p className="mb-3 text-xs text-gray-600">
-                  Welcome {user?.firstName}! Create your first document to get
-                  started.
+                  {searchTerm
+                    ? "Try a different search."
+                    : `Welcome ${user?.firstName}! Create your first document to get started.`}
                 </p>
-                <Button
-                  size="sm"
-                  className="bg-blue-600 text-white hover:bg-blue-700"
-                  onClick={handleNewDocument}
-                  disabled={isCreating}
-                >
-                  <Plus className="mr-1 size-3" />
-                  {isCreating ? "Creating..." : "New Document"}
-                </Button>
+                {!searchTerm && (
+                  <Button
+                    size="sm"
+                    className="bg-blue-600 text-white hover:bg-blue-700"
+                    onClick={handleNewDocument}
+                    disabled={isCreating}
+                  >
+                    <Plus className="mr-1 size-3" />
+                    {isCreating ? "Creating..." : "New Document"}
+                  </Button>
+                )}
               </div>
             ) : (
               <>
                 <div className="mb-4 text-xs font-medium text-gray-600">
-                  {documents.length} document{documents.length !== 1 ? "s" : ""}{" "}
-                  found
+                  {filteredDocuments.length} document
+                  {filteredDocuments.length !== 1 ? "s" : ""} found
                 </div>
-                {documents.map(document => (
+                {filteredDocuments.map(document => (
                   <div
                     key={document.id}
                     onClick={() => handleDocumentClick(document.id)}
@@ -395,6 +368,11 @@ export function DocumentSidebar() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Action Buttons - Fixed */}
+      <div className="shrink-0 border-t border-gray-200 p-4">
+        {/* Add any action buttons here */}
       </div>
     </div>
   )
