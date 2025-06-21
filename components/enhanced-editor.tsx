@@ -302,7 +302,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     const MAX_RAPID_ANALYSES = 5
 
     if (isAnalyzing) return true
-    if (!contentRef.current?.trim()) return true
+    if (!contentForWordCount.trim()) return true
     if (currentTime - lastAnalysisTime < ANALYSIS_COOLDOWN) return true
     if (
       analysisCount >= MAX_RAPID_ANALYSES &&
@@ -311,7 +311,13 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       return true
 
     return false
-  }, [isAnalyzing, lastAnalysisTime, analysisCount, currentTime])
+  }, [
+    isAnalyzing,
+    lastAnalysisTime,
+    analysisCount,
+    currentTime,
+    contentForWordCount
+  ])
 
   // Calculate remaining cooldown time for UI
   const cooldownRemaining = useMemo(() => {
@@ -345,6 +351,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       // Check if selection is within our editor and not collapsed
       const isWithinEditor = textareaRef.current.contains(selection.anchorNode)
       setHasSelection(isWithinEditor && !range.collapsed)
+
+      // Keep Analyze button reactive by syncing contentForWordCount even when only selection changes
+      if (textareaRef.current) {
+        const latestText = textareaRef.current.innerText || ""
+        if (latestText !== contentRef.current) {
+          contentRef.current = latestText
+        }
+        setContent(latestText)
+        setContentForWordCount(latestText)
+      }
     } else {
       setHasSelection(false)
     }
@@ -837,7 +853,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       return
     }
 
-    if (!user || !document) return
+    if (!user) return
 
     // Check if there's actual content to save
     const hasContent =

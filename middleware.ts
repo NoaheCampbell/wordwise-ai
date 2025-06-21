@@ -9,10 +9,14 @@ import { NextResponse } from "next/server"
 import { db } from "@/db/db"
 import { profilesTable } from "@/db/schema/profiles-schema"
 import { eq } from "drizzle-orm"
+import { isDemoUser } from "@/lib/demo"
 
 const isProtectedRoute = createRouteMatcher(["/", "/profile", "/settings", "/document/:path*"])
 // Routes that require an active (or trialing) Pro subscription
+// We now include the app root "/" so logged-in users without Pro are redirected to the billing page straight away.
+// We purposely DO NOT match the settings/billing pages so that users can subscribe.
 const isProRoute = createRouteMatcher([
+  "/",
   "/dashboard/:path*",
   "/ideas/:path*",
   "/document/:path*"
@@ -28,6 +32,11 @@ export default clerkMiddleware(async (auth, req) => {
 
   // For routes that require Pro membership, check the user's membership status stored in Clerk public metadata
   if (userId && isProRoute(req)) {
+    // Demo account bypasses Pro check (rate-limited elsewhere)
+    if (isDemoUser(userId)) {
+      return
+    }
+
     // `sessionClaims` includes `publicMetadata`
     // The Stripe webhook keeps this value in sync ("free" | "pro")
     let membership = (sessionClaims?.public_metadata as any)?.membership || "free"
@@ -35,7 +44,8 @@ export default clerkMiddleware(async (auth, req) => {
     // If still free, verify against Clerk API
     if (membership === "free") {
       try {
-        const user = await (await clerkClient()).users.getUser(userId)
+        const clerk = await clerkClient()
+        const user = await clerk.users.getUser(userId)
         const metaMembership = (user.publicMetadata as any)?.membership
         if (metaMembership === "pro") membership = "pro"
       } catch (e) {

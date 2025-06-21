@@ -218,7 +218,8 @@ export async function manageSubscriptionStatusChange(
 
   // Sync Clerk public metadata for edge checks
   try {
-    await (await clerkClient()).users.updateUser(profile.id, {
+    const clerk = await clerkClient()
+    await clerk.users.updateUser(profile.id, {
       publicMetadata: { membership: isActive ? "pro" : "free" }
     })
   } catch (e) {

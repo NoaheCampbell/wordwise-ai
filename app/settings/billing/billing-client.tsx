@@ -17,6 +17,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { useEffect } from "react"
+import { SignOutButton } from "@clerk/nextjs"
 
 interface BillingClientProps {
   membership: string
@@ -85,12 +86,27 @@ export default function BillingClient({
             >
               <ArrowLeft className="mr-2 size-4" /> Back to App
             </Link>
+
             <div className="flex items-center gap-2">
               <Sparkles className="size-6 text-blue-600" />
               <h1 className="text-xl font-semibold text-gray-900">
                 WordWise AI Pro
               </h1>
             </div>
+
+            {/* Spacer */}
+            <div className="flex-1" />
+
+            {/* Logout button so users can exit the billing wall */}
+            <SignOutButton>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-gray-600 hover:text-gray-900"
+              >
+                Log out
+              </Button>
+            </SignOutButton>
           </div>
         </div>
       </div>
