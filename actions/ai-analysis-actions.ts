@@ -868,6 +868,7 @@ export async function enhancedRewriteWithToneAction(
 
   try {
     const { userId } = await auth()
+    const userKey = userId || "anonymous"
     if (userId && !checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
       return {
         isSuccess: false,
@@ -889,7 +890,7 @@ export async function enhancedRewriteWithToneAction(
             const result = await callAIWithCache(
               prompt,
               `rewrite-${tone}`,
-              userId
+              userKey
             )
             if (result.isSuccess) {
               return result.data
@@ -912,7 +913,7 @@ export async function enhancedRewriteWithToneAction(
       }
       const prompt = populateTemplate(template, { tone, text })
       if (prompt) {
-        return await callAIWithCache(prompt, `rewrite-${tone}`, userId)
+        return await callAIWithCache(prompt, `rewrite-${tone}`, userKey)
       } else {
         return { isSuccess: false, message: "Failed to create prompt." }
       }
