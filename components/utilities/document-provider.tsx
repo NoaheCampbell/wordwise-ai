@@ -166,10 +166,14 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
   const updateLiveClarityScore = useCallback(
     async (text: string) => {
+      if (!currentDocumentId) {
+        // Don't calculate for documents that don't exist yet
+        return
+      }
       setIsLoadingLiveScore(true)
       const result = await calculateClarityScoreForTextAction(
         text,
-        currentDocumentId || undefined
+        currentDocumentId
       )
       if (result.isSuccess && result.data) {
         setLiveClarityScore(result.data)

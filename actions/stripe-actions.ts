@@ -26,13 +26,27 @@ export async function createCheckoutSessionAction(): Promise<
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const [profile] = await db
+    let [profile] = await db
       .select()
       .from(profilesTable)
       .where(eq(profilesTable.id, userId))
 
     if (!profile) {
-      return { isSuccess: false, message: "Profile not found" }
+      // Get user details from Clerk to create profile
+      const user = await (await clerkClient()).users.getUser(userId)
+      const email = user.emailAddresses[0]?.emailAddress || `user-${userId}@example.com`
+
+      // Create profile automatically
+      const [newProfile] = await db
+        .insert(profilesTable)
+        .values({
+          id: userId,
+          email: email,
+          membership: "free"
+        })
+        .returning()
+
+      profile = newProfile
     }
 
     // Ensure we have a Stripe customer for this user
@@ -132,12 +146,30 @@ export async function createPortalSessionAction(): Promise<
       return { isSuccess: false, message: "User not authenticated" }
     }
 
-    const [profile] = await db
+    let [profile] = await db
       .select()
       .from(profilesTable)
       .where(eq(profilesTable.id, userId))
 
-    if (!profile || !profile.stripeCustomerId) {
+    if (!profile) {
+      // Get user details from Clerk to create profile
+      const user = await (await clerkClient()).users.getUser(userId)
+      const email = user.emailAddresses[0]?.emailAddress || `user-${userId}@example.com`
+
+      // Create profile automatically
+      const [newProfile] = await db
+        .insert(profilesTable)
+        .values({
+          id: userId,
+          email: email,
+          membership: "free"
+        })
+        .returning()
+
+      profile = newProfile
+    }
+
+    if (!profile.stripeCustomerId) {
       return { isSuccess: false, message: "No Stripe customer for user" }
     }
 
