@@ -58,7 +58,9 @@ export async function createCheckoutSessionAction(): Promise<
     // The price ID for the Pro plan must be set in env variables
     const priceId = process.env.STRIPE_PRO_PRICE_ID!
 
-    const session = await stripe.checkout.sessions.create({
+    let session: Stripe.Checkout.Session
+
+    const sessionPayload: Stripe.Checkout.SessionCreateParams = {
       mode: "subscription",
       payment_method_types: ["card"],
       customer: stripeCustomerId,
@@ -74,14 +76,38 @@ export async function createCheckoutSessionAction(): Promise<
       cancel_url:
         process.env.NEXT_PUBLIC_APP_URL?.concat("/settings/billing?canceled=1") ??
         "http://localhost:3000/settings/billing?canceled=1",
-      // We will listen for the completed event on the webhook
       subscription_data: {
         metadata: {
           userId: profile.id
         },
         trial_period_days: 7
       }
-    })
+    }
+
+    try {
+      session = await stripe.checkout.sessions.create(sessionPayload)
+    } catch (err: any) {
+      // The stored customer ID might be from the other Stripe environment (live vs test)
+      if (err?.code === "resource_missing" && err?.param === "customer") {
+        // Wipe the bad customer id and create a fresh customer in the current environment
+        const freshCustomer = await stripe.customers.create({
+          email: profile.email ?? undefined,
+          metadata: { userId: profile.id }
+        })
+
+        await db
+          .update(profilesTable)
+          .set({ stripeCustomerId: freshCustomer.id })
+          .where(eq(profilesTable.id, profile.id))
+
+        session = await stripe.checkout.sessions.create({
+          ...sessionPayload,
+          customer: freshCustomer.id
+        })
+      } else {
+        throw err
+      }
+    }
 
     return {
       isSuccess: true,
