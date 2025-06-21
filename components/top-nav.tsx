@@ -61,7 +61,7 @@ export function TopNav({ children }: { children?: ReactNode }) {
         <div className="flex items-center gap-4">
           <SidebarTrigger />
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold text-gray-900">WordWise AI</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Plotnotes</h1>
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <CheckCircle className="size-4 text-green-500" />
               <span>All changes saved</span>

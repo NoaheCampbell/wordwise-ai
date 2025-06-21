@@ -1,4 +1,4 @@
-WordWise AI – Development Checklist
+Plotnotes – Development Checklist
 
 Phase 1: Foundation & Core Infrastructure
 
@@ -83,7 +83,7 @@ Criteria: Adds smart editing capabilities driven by GPT-4o. Can be built after t
 [ ] Feature 2: Tone Matching
 [ ] Sub-feature 2.1: Let users select a tone style (e.g. witty, bold, helpful)
 [ ] Sub-feature 2.2: Rewrite selected text to align with target tone
-[ ] Sub-feature 2.3: Save user’s preferred tone per project for future suggestions
+[ ] Sub-feature 2.3: Save user's preferred tone per project for future suggestions
 
 [ ] Feature 3: Engagement Optimization
 [ ] Sub-feature 3.1: Suggest improved subject lines and hooks

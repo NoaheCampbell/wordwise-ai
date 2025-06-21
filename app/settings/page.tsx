@@ -135,7 +135,7 @@ export default function SettingsPage() {
                   AI Writing Assistant
                 </CardTitle>
                 <CardDescription>
-                  Configure how WordWise AI helps improve your writing.
+                  Configure how Plotnotes helps improve your writing.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">

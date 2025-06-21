@@ -126,7 +126,7 @@ export function AISuggestionsPanel() {
       {/* Footer - Fixed height */}
       <div className="shrink-0 border-t border-gray-200 bg-gray-100 p-3">
         <div className="text-center text-xs text-gray-600">
-          Suggestions powered by WordWise AI
+          Suggestions powered by Plotnotes
         </div>
       </div>
 

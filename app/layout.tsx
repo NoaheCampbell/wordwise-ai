@@ -17,7 +17,7 @@ import "@/lib/force-pluralize"
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" })
 
 export const metadata: Metadata = {
-  title: "WordWise AI",
+  title: "Plotnotes",
   description: "The AI-powered writing assistant for modern teams"
 }
 
