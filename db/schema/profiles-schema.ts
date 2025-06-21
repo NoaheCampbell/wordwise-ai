@@ -13,6 +13,8 @@ export const profilesTable = pgTable("profiles", {
   email: text("email").notNull().unique(),
   name: text("name"),
   membership: membershipEnum("membership").notNull().default("free"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
