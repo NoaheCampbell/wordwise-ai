@@ -857,9 +857,8 @@ export async function enhancedRewriteWithToneAction(
   tone: string,
   enforceBoundaries: boolean = true
 ): Promise<ActionState<string>> {
-  const { userId } = await auth()
-  if (!userId) {
-    return { isSuccess: false, message: "User not authenticated" }
+  if (!process.env.OPENAI_API_KEY) {
+    return { isSuccess: false, message: "OpenAI API key not configured" }
   }
 
   const validation = validateInput(text)
@@ -867,31 +866,65 @@ export async function enhancedRewriteWithToneAction(
     return { isSuccess: false, message: validation.message! }
   }
 
-  // Phase 2: Enhanced validation for rewrite operations
-  const rewriteValidation = validateRewriteText(text)
-  if (!rewriteValidation.isValid) {
-    return { isSuccess: false, message: rewriteValidation.message! }
+  try {
+    const { userId } = await auth()
+    const userKey = userId || "anonymous"
+    if (userId && !checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
+      return {
+        isSuccess: false,
+        message: "Rate limit exceeded. Please try again later."
+      }
+    }
+
+    // Chunking strategy for longer texts
+    const paragraphs = text.split(/\\n\\s*\\n/).filter(p => p.trim().length > 0)
+    const isLongText = paragraphs.length > 1 || text.length > 1000
+
+    if (isLongText) {
+      const rewrittenParagraphs = await Promise.all(
+        paragraphs.map(async paragraph => {
+          const template = getTemplate("rewrite", "tone")
+          if (!template) return paragraph // Template not found
+          const prompt = populateTemplate(template, { tone, text: paragraph })
+          if (prompt) {
+            const result = await callAIWithCache(
+              prompt,
+              `rewrite-${tone}`,
+              userKey
+            )
+            if (result.isSuccess) {
+              return result.data
+            }
+          }
+          return paragraph // Return original paragraph on failure
+        })
+      )
+      const rewrittenText = rewrittenParagraphs.join("\\n\\n")
+      return {
+        isSuccess: true,
+        message: "Text rewritten successfully",
+        data: rewrittenText
+      }
+    } else {
+      // Original logic for shorter texts
+      const template = getTemplate("rewrite", "tone")
+      if (!template) {
+        return { isSuccess: false, message: "Rewrite template not found." }
+      }
+      const prompt = populateTemplate(template, { tone, text })
+      if (prompt) {
+        return await callAIWithCache(prompt, `rewrite-${tone}`, userKey)
+      } else {
+        return { isSuccess: false, message: "Failed to create prompt." }
+      }
+    }
+  } catch (error) {
+    console.error("Error in enhancedRewriteWithToneAction:", error)
+    return {
+      isSuccess: false,
+      message: "An error occurred during the rewrite."
+    }
   }
-
-  // Enforce sentence boundaries if requested
-  let processedText = text
-  if (enforceBoundaries) {
-    processedText = enforceSentenceBoundary(text, text)
-  }
-
-  // Truncate if too long
-  processedText = truncateAtSentenceBoundary(processedText, MAX_INPUT_LENGTH)
-
-  const prompt = `You are a professional writing assistant. Rewrite the following text to have a ${tone} tone.
-Your response should be only the rewritten text, without any additional comments, explanations, or markdown formatting. 
-Preserve the original meaning and structure as much as possible.
-
-Original Text:
-"${processedText}"
-
-Rewritten Text:`
-
-  return await callAIWithCache(prompt, "rewrite", userId, { tone })
 }
 
 /**
@@ -1100,63 +1133,8 @@ export async function rewriteWithToneAction(
   text: string,
   tone: string
 ): Promise<ActionState<string>> {
-  if (!process.env.OPENAI_API_KEY) {
-    return { isSuccess: false, message: "OpenAI API key not configured" }
-  }
-  
-  // Apply safety validation
-  const validation = validateInput(text)
-  if (!validation.isValid) {
-    return { isSuccess: false, message: validation.message! }
-  }
-
-  // Phase 2: Enhanced validation for rewrite operations
-  const rewriteValidation = validateRewriteText(text)
-  if (!rewriteValidation.isValid) {
-    return { isSuccess: false, message: rewriteValidation.message! }
-  }
-
-  try {
-    // Check rate limits for authenticated users
-    const { userId } = await auth()
-    if (userId && !checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
-      return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
-    }
-
-    // Truncate text at sentence boundaries if too long
-    const processedText = truncateAtSentenceBoundary(text, MAX_INPUT_LENGTH)
-
-    const prompt = `
-You are a professional writing assistant. Rewrite the following text to have a ${tone} tone.
-Your response should be only the rewritten text, without any additional comments, explanations, or markdown formatting. Preserve the original meaning and structure as much as possible.
-
-Original Text:
-"${processedText}"
-
-Rewritten Text:`
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: MAX_OUTPUT_TOKENS,
-    })
-
-    const rewrittenText = response.choices[0]?.message?.content?.trim()
-
-    if (!rewrittenText) {
-      return { isSuccess: false, message: "Failed to get a response from the AI." }
-    }
-
-    return {
-      isSuccess: true,
-      message: "Text rewritten successfully",
-      data: rewrittenText,
-    }
-  } catch (error) {
-    console.error("Error rewriting text with tone:", error)
-    return { isSuccess: false, message: "An error occurred while rewriting the text." }
-  }
+  // This is a wrapper for the enhanced rewrite function for simplicity
+  return enhancedRewriteWithToneAction(text, tone, true)
 }
 
 /**

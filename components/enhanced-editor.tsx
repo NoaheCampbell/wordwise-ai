@@ -1061,7 +1061,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       if (result.isSuccess && result.data) {
         const { start, end } = selection
         const newContent =
-          content.substring(0, start) + result.data + content.substring(end)
+          contentRef.current.substring(0, start) +
+          result.data +
+          contentRef.current.substring(end)
         handleContentChange(newContent)
 
         // Clear selection after rewrite
@@ -1069,7 +1071,8 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         setPreservedSelection(null)
         if (textareaRef.current) {
           textareaRef.current.focus()
-          setCursorPosition(textareaRef.current, start + result.data.length)
+          const newCursorPos = start + result.data.length
+          setCursorPosition(textareaRef.current, newCursorPos)
         }
 
         toast.success(`Content rewritten with ${tone} tone.`)
@@ -1465,14 +1468,14 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
         newContent =
           contentRef.current.slice(0, start) +
           extendedText +
-          "\n\n" +
+          "\\n\\n" +
           selectedText +
           contentRef.current.slice(end)
       } else if (mode === "continue") {
         // Add content after the selection
         newContent =
           contentRef.current.slice(0, end) +
-          "\n\n" +
+          "\\n\\n" +
           extendedText +
           contentRef.current.slice(end)
       } else {
@@ -2385,11 +2388,11 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   const handleContentChange = (newContent: string) => {
     if (isUpdatingFromEffect.current) {
-      isUpdatingFromEffect.current = false
       return
     }
 
     contentRef.current = newContent
+    setContent(newContent)
     setContentForWordCount(newContent)
     setCurrentContent(newContent) // Update provider with current content
 
@@ -2641,6 +2644,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     if (textareaRef.current && !textareaRef.current.innerHTML) {
       isUpdatingFromEffect.current = true
       textareaRef.current.innerHTML = renderHighlightedHTML()
+      queueMicrotask(() => {
+        isUpdatingFromEffect.current = false
+      })
     }
   }, [content, highlights])
 
@@ -3281,7 +3287,7 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       <div className="relative flex-1 bg-white p-6">
         <div
           ref={textareaRef}
-          contentEditable
+          contentEditable={!isAnalyzing && !isSaving && !isRewriting}
           suppressContentEditableWarning={true}
           onKeyDown={handleKeyDown}
           onKeyUp={updateSelectionState}
@@ -3313,6 +3319,16 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
             wordWrap: "break-word"
           }}
         />
+        {isRewriting && (
+          <div className="absolute inset-0 flex items-center justify-center bg-white/75 backdrop-blur-sm">
+            <div className="flex items-center gap-2 rounded-lg bg-white p-4 shadow-lg">
+              <Sparkles className="size-4 animate-spin text-blue-600" />
+              <span className="text-sm font-medium text-gray-800">
+                Rewriting...
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-6 py-3 text-sm text-gray-600">
