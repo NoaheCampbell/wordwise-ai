@@ -1,11 +1,8 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import {
   Check,
@@ -47,16 +44,6 @@ const features = [
     icon: <FileText className="size-5 text-orange-600" />,
     title: "Unlimited Documents",
     description: "Create and store unlimited documents and projects"
-  },
-  {
-    icon: <Users className="size-5 text-indigo-600" />,
-    title: "Team Collaboration",
-    description: "Share documents and collaborate with team members"
-  },
-  {
-    icon: <Shield className="size-5 text-red-600" />,
-    title: "Priority Support",
-    description: "Get help when you need it with priority customer support"
   }
 ]
 
@@ -65,8 +52,6 @@ const includedFeatures = [
   "Real-time grammar and style checking",
   "Unlimited document storage",
   "Writing analytics and insights",
-  "Team collaboration tools",
-  "Priority customer support",
   "Export to multiple formats",
   "Custom writing templates",
   "API access for integrations"
@@ -78,9 +63,6 @@ export default function BillingClient({
   upgradeToPro,
   manageSubscription
 }: BillingClientProps) {
-  const [email, setEmail] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-
   return (
     <div className="min-h-screen bg-white dark:bg-white">
       {/* Header */}
@@ -123,15 +105,12 @@ export default function BillingClient({
 
         {/* Hero Section */}
         <div className="mb-12 text-center">
-          <Badge className="mb-4 border-blue-200 bg-blue-100 text-blue-800">
-            ✨ Most Popular Plan
-          </Badge>
           <h2 className="mb-4 text-4xl font-bold text-gray-900 dark:text-gray-900">
             Supercharge Your Writing
           </h2>
           <p className="mx-auto max-w-2xl text-xl text-gray-600">
             Unlock the full power of AI-assisted writing with advanced features,
-            unlimited usage, and priority support.
+            and unlimited usage.
           </p>
         </div>
 
@@ -225,28 +204,7 @@ export default function BillingClient({
               </div>
             </div>
 
-            {/* Stats */}
-            <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-100 dark:to-purple-100">
-              <CardContent className="p-6">
-                <h3 className="mb-4 font-semibold text-gray-900">
-                  Join thousands of writers
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">
-                      10,000+
-                    </div>
-                    <div className="text-sm text-gray-600">Active Writers</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-2xl font-bold text-purple-600">
-                      2M+
-                    </div>
-                    <div className="text-sm text-gray-600">Words Improved</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Stats card removed */}
           </div>
         </div>
 
