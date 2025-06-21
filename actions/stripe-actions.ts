@@ -42,7 +42,7 @@ export async function createCheckoutSessionAction(): Promise<
         .values({
           id: userId,
           email: email,
-          membership: "free"
+          membership: "pro"
         })
         .returning()
 
@@ -163,7 +163,7 @@ export async function createPortalSessionAction(): Promise<
         .values({
           id: userId,
           email: email,
-          membership: "free"
+          membership: "pro"
         })
         .returning()
 
