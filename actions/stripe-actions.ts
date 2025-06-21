@@ -141,21 +141,48 @@ export async function createPortalSessionAction(): Promise<
       return { isSuccess: false, message: "No Stripe customer for user" }
     }
 
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: profile.stripeCustomerId,
-      return_url:
-        process.env.NEXT_PUBLIC_APP_URL?.concat("/settings/billing") ??
-        "http://localhost:3000/settings/billing"
-    })
+    let portalSession: Stripe.BillingPortal.Session
+
+    try {
+      portalSession = await stripe.billingPortal.sessions.create({
+        customer: profile.stripeCustomerId,
+        return_url:
+          process.env.NEXT_PUBLIC_APP_URL?.concat("/settings/billing") ??
+          "http://localhost:3000/settings/billing"
+      })
+    } catch (err: any) {
+      if (err?.code === "resource_missing" && err?.param === "customer") {
+        const freshCustomer = await stripe.customers.create({
+          email: profile.email ?? undefined,
+          metadata: { userId: profile.id }
+        })
+
+        await db
+          .update(profilesTable)
+          .set({ stripeCustomerId: freshCustomer.id })
+          .where(eq(profilesTable.id, profile.id))
+
+        portalSession = await stripe.billingPortal.sessions.create({
+          customer: freshCustomer.id,
+          return_url:
+            process.env.NEXT_PUBLIC_APP_URL?.concat("/settings/billing") ??
+            "http://localhost:3000/settings/billing"
+        })
+      } else {
+        throw err
+      }
+    }
 
     return {
       isSuccess: true,
       message: "Portal session created",
       data: { url: portalSession.url }
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating portal session:", error)
-    return { isSuccess: false, message: "Failed to create portal session" }
+    // Pass the specific Stripe error message to the client if available
+    const message = error.raw?.message || "Failed to create portal session"
+    return { isSuccess: false, message }
   }
 }
 
