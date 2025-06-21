@@ -197,8 +197,4 @@ export async function manageSubscriptionStatusChange(
   } catch (e) {
     console.error("Failed to update Clerk metadata", e)
   }
-
-  console.log(
-    `Updated subscription status for user ${profile.id}: ${subscription.status}`
-  )
 } 

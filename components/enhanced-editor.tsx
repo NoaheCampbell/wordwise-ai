@@ -283,7 +283,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
 
   // Helper function to reset analysis state
   const resetAnalysisState = useCallback(() => {
-    console.log("[Analysis Debug] Resetting analysis state...")
     setDeepHighlights([])
     setRealTimeHighlights([])
     setSuggestions([])
@@ -777,8 +776,6 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
       if (initialDocument.id) {
         loadCachedSuggestionsForDocument(initialDocument.id)
       }
-
-      console.log(`[Analysis Debug] Document loaded: ${initialDocument.id}`)
     }
     return () => {
       setSuggestions([])

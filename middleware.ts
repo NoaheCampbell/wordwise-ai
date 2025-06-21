@@ -4,8 +4,11 @@ Contains middleware for protecting routes, checking user authentication, and red
 </ai_context>
 */
 
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
+import { clerkMiddleware, createRouteMatcher, clerkClient } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { db } from "@/db/db"
+import { profilesTable } from "@/db/schema/profiles-schema"
+import { eq } from "drizzle-orm"
 
 const isProtectedRoute = createRouteMatcher(["/", "/profile", "/settings", "/document/:path*"])
 // Routes that require an active (or trialing) Pro subscription
@@ -13,8 +16,6 @@ const isProRoute = createRouteMatcher([
   "/dashboard/:path*",
   "/idea-generator-demo",
   "/ideas/:path*",
-  "/ai-test",
-  "/view/:path*",
   "/document/:path*"
 ])
 
@@ -30,7 +31,18 @@ export default clerkMiddleware(async (auth, req) => {
   if (userId && isProRoute(req)) {
     // `sessionClaims` includes `publicMetadata`
     // The Stripe webhook keeps this value in sync ("free" | "pro")
-    const membership = (sessionClaims?.public_metadata as any)?.membership || "free"
+    let membership = (sessionClaims?.public_metadata as any)?.membership || "free"
+
+    // If still free, verify against Clerk API
+    if (membership === "free") {
+      try {
+        const user = await (await clerkClient()).users.getUser(userId)
+        const metaMembership = (user.publicMetadata as any)?.membership
+        if (metaMembership === "pro") membership = "pro"
+      } catch (e) {
+        console.error("Clerk user fetch failed", e)
+      }
+    }
 
     if (membership !== "pro") {
       // Redirect to billing page with info
@@ -42,5 +54,5 @@ export default clerkMiddleware(async (auth, req) => {
 })
 
 export const config = {
-  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"]
+  matcher: ["/((?!.*\\..*|_next).*)", "/", "/(api|trpc)(.*)"],
 }

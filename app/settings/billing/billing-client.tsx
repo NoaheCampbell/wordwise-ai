@@ -16,6 +16,7 @@ import {
   CreditCard
 } from "lucide-react"
 import Link from "next/link"
+import { useEffect } from "react"
 
 interface BillingClientProps {
   membership: string
@@ -63,6 +64,16 @@ export default function BillingClient({
   upgradeToPro,
   manageSubscription
 }: BillingClientProps) {
+  // If payment just succeeded, reload page after short delay to ensure Clerk JWT includes updated metadata
+  useEffect(() => {
+    if (params.success) {
+      const t = setTimeout(() => {
+        window.location.reload()
+      }, 1200)
+      return () => clearTimeout(t)
+    }
+  }, [params.success])
+
   return (
     <div className="min-h-screen bg-white dark:bg-white">
       {/* Header */}
