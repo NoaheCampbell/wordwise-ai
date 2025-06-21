@@ -232,7 +232,7 @@ export default function BillingClient({
               },
               {
                 q: "Is there a free trial?",
-                a: "We offer a 30-day money-back guarantee. If you're not satisfied, we'll refund your first month completely."
+                a: "We offer a 7-day trial. You can cancel anytime before the trial ends and you won't be charged."
               },
               {
                 q: "What payment methods do you accept?",
