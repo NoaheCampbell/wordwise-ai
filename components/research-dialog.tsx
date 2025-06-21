@@ -111,7 +111,13 @@ export function ResearchDialog({
           .filter(d => d)
       )
       if (articlesResult.isSuccess) {
-        loadSources() // Refresh sources to show newly saved ones
+        if (documentId) {
+          // Saved doc: reload from DB to include any async inserts
+          loadSources()
+        } else {
+          // Unsaved doc: just show the fetched sources directly
+          setSources(articlesResult.data as any)
+        }
         toast.success(
           `Content analyzed! Found ${articlesResult.data.length} relevant articles`
         )
