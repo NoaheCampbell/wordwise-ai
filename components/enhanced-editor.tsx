@@ -99,6 +99,7 @@ import {
   TooltipProvider,
   TooltipTrigger
 } from "@/components/ui/tooltip"
+import { isDemoUser, isDemoEmail } from "@/lib/demo"
 
 interface EnhancedEditorProps {
   initialDocument?: SelectDocument
@@ -831,10 +832,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [])
 
   const handleSave = async () => {
-    if (!user) {
-      toast.error("You must be logged in to save a document.")
+    if (isDemo) {
+      toast.info("Saving is disabled in the live demo ✨")
       return
     }
+
+    if (!user || !document) return
 
     // Check if there's actual content to save
     const hasContent =
@@ -2742,6 +2745,9 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
     }
   }, [selectedSuggestion])
 
+  const isDemo =
+    isDemoUser(user?.id) || isDemoEmail(user?.primaryEmailAddress?.emailAddress)
+
   return (
     <div className="flex h-full max-h-full flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 p-4">
@@ -2785,15 +2791,39 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
               Share
             </Button>
           )}
-          <Button
-            onClick={handleSave}
-            disabled={isSaving}
-            size="sm"
-            className="bg-blue-600 text-white hover:bg-blue-700"
-          >
-            <Save className="mr-2 size-4" />
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
+          {isDemo ? (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button
+                      onClick={() =>
+                        toast.info("Create an account to save your work")
+                      }
+                      size="sm"
+                      className="cursor-not-allowed bg-gray-300 text-white"
+                    >
+                      <Save className="mr-2 size-4" />
+                      Save
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Create an account to save your work</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              size="sm"
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              <Save className="mr-2 size-4" />
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
+          )}
           {document && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

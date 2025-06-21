@@ -53,7 +53,6 @@ const includedFeatures = [
   "Real-time grammar and style checking",
   "Unlimited document storage",
   "Writing analytics and insights",
-  "Export to multiple formats",
   "Custom writing templates",
   "API access for integrations"
 ]
