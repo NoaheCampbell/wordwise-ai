@@ -333,12 +333,12 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
                     placeholder="Search ideas..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="border-gray-300 bg-white pl-10"
+                    className="border-gray-300 bg-white pl-10 text-gray-900 placeholder:text-gray-400 dark:bg-white"
                   />
                 </div>
 
                 <Select value={selectedType} onValueChange={setSelectedType}>
-                  <SelectTrigger className="w-40 border-gray-300 bg-white">
+                  <SelectTrigger className="w-40 border-gray-300 bg-white text-gray-900 dark:bg-white">
                     <SelectValue placeholder="Filter by type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -350,7 +350,7 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
                 </Select>
 
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-40 border-gray-300 bg-white">
+                  <SelectTrigger className="w-40 border-gray-300 bg-white text-gray-900 dark:bg-white">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
@@ -440,7 +440,7 @@ export function IdeasDialog({ children }: IdeasDialogProps) {
                           size="sm"
                           variant="outline"
                           onClick={() => handleDeleteIdea(idea.id)}
-                          className="border-gray-300 text-gray-700 hover:bg-gray-50"
+                          className="border-gray-300 bg-white text-gray-700 hover:bg-red-50 hover:text-red-600 dark:bg-white dark:hover:bg-red-100"
                         >
                           Delete
                         </Button>
