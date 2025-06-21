@@ -9,6 +9,7 @@ import {
   summarizeContentAction,
   analyzeDocumentForEnhancedIdeasAction
 } from "@/actions/research-ideation-actions"
+import { isDemoUser } from "@/lib/demo"
 
 function generateSlug(title: string): string {
   const slug = title
@@ -28,6 +29,29 @@ export async function createDocumentAction(
     
     if (!userId) {
       return { isSuccess: false, message: "User not authenticated" }
+    }
+
+    // Demo accounts: do not persist, just echo back a mock document
+    if (isDemoUser(userId)) {
+      const now = new Date()
+      const mockDoc: SelectDocument = {
+        id: crypto.randomUUID(),
+        userId,
+        title: document.title,
+        content: document.content || "",
+        status: "complete",
+        createdAt: now,
+        updatedAt: now,
+        isPublic: false,
+        slug: generateSlug(document.title),
+        version: 1
+      } as any
+
+      return {
+        isSuccess: true,
+        message: "Demo mode: document not saved",
+        data: mockDoc
+      }
     }
 
     const docToInsert: InsertDocument = {
@@ -127,6 +151,15 @@ export async function updateDocumentAction(
 ): Promise<ActionState<SelectDocument>> {
   try {
     const docToUpdate: Partial<InsertDocument> = { ...data }
+
+    // Skip for demo user
+    if (isDemoUser(userId)) {
+      return {
+        isSuccess: true,
+        message: "Demo mode: update ignored",
+        data: { id, userId, ...(data as any), updatedAt: new Date() } as any
+      }
+    }
 
     // Skip expensive AI analysis by default for faster saves
     if (!skipAnalysis && docToUpdate.content && docToUpdate.content.trim().length > 0) {
@@ -277,6 +310,14 @@ export async function deleteDocumentAction(
   userId: string
 ): Promise<ActionState<void>> {
   try {
+    if (isDemoUser(userId)) {
+      return {
+        isSuccess: true,
+        message: "Demo mode: delete ignored",
+        data: undefined
+      }
+    }
+
     const result = await db
       .delete(documentsTable)
       .where(and(eq(documentsTable.id, id), eq(documentsTable.userId, userId)))

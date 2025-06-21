@@ -111,7 +111,13 @@ export function ResearchDialog({
           .filter(d => d)
       )
       if (articlesResult.isSuccess) {
-        loadSources() // Refresh sources to show newly saved ones
+        if (documentId) {
+          // Saved doc: reload from DB to include any async inserts
+          loadSources()
+        } else {
+          // Unsaved doc: just show the fetched sources directly
+          setSources(articlesResult.data as any)
+        }
         toast.success(
           `Content analyzed! Found ${articlesResult.data.length} relevant articles`
         )
@@ -333,9 +339,9 @@ export function ResearchDialog({
                     </h3>
                   </div>
                   <div className="space-y-4">
-                    {sources.map(source => (
+                    {sources.map((source, idx) => (
                       <div
-                        key={source.id}
+                        key={source.id ?? `${source.url}-${idx}`}
                         className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 transition-colors hover:bg-gray-100"
                       >
                         <div className="flex items-start justify-between">

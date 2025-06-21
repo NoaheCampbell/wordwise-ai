@@ -26,7 +26,8 @@ const MIN_INPUT_LENGTH = 10 // Minimum meaningful input
 
 // Rate limiting (simple in-memory implementation)
 const rateLimiter = new Map<string, { count: number; resetTime: number }>()
-const RATE_LIMIT_MAX = 60 // Max requests per hour
+const DEFAULT_RATE_LIMIT_MAX = 60 // Max requests per hour
+const DEMO_RATE_LIMIT_MAX = 5 // Per-visitor limit for demo account
 const RATE_LIMIT_WINDOW = 60 * 60 * 1000 // 1 hour in milliseconds
 
 // Add after the existing imports and constants
@@ -53,20 +54,17 @@ function generateCacheKey(text: string, mode: string, additionalParams?: any): s
 /**
  * Check and enforce rate limits
  */
-function checkRateLimit(userId: string): boolean {
+function checkRateLimitKey(key: string, max: number, windowMs: number = RATE_LIMIT_WINDOW): boolean {
   const now = Date.now()
-  const userLimit = rateLimiter.get(userId)
-  
-  if (!userLimit || now > userLimit.resetTime) {
-    rateLimiter.set(userId, { count: 1, resetTime: now + RATE_LIMIT_WINDOW })
+  const entry = rateLimiter.get(key)
+  if (!entry || now > entry.resetTime) {
+    rateLimiter.set(key, { count: 1, resetTime: now + windowMs })
     return true
   }
-  
-  if (userLimit.count >= RATE_LIMIT_MAX) {
+  if (entry.count >= max) {
     return false
   }
-  
-  userLimit.count++
+  entry.count++
   return true
 }
 
@@ -474,12 +472,17 @@ export async function analyzeTextAction(
       }
     }
 
-    // Check rate limits for authenticated users
-    const { userId: authUserId } = await auth()
-    if (authUserId && !checkRateLimit(authUserId)) {
+    // Check rate limits
+    const { userId: authUserId, sessionId } = await auth()
+    const key = sessionId || authUserId || "anonymous"
+    const isDemoUser = authUserId === process.env.DEMO_CLERK_USER_ID
+    const allowed = checkRateLimitKey(key, isDemoUser ? DEMO_RATE_LIMIT_MAX : DEFAULT_RATE_LIMIT_MAX)
+    if (!allowed) {
       return {
         isSuccess: false,
-        message: "Rate limit exceeded. Please try again later."
+        message: isDemoUser
+          ? "Demo rate limit reached. Please sign up for unlimited use."
+          : "Rate limit exceeded. Please try again later."
       }
     }
 
@@ -657,7 +660,7 @@ async function callAIWithCache(
 ): Promise<ActionState<string>> {
   try {
     // Check rate limit
-    if (!checkRateLimit(userId)) {
+    if (!checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
       return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
     }
 
@@ -967,7 +970,7 @@ export async function calculateClarityScoreForTextAction(
     }
 
     // Check rate limits
-    if (userId && !checkRateLimit(userId)) {
+    if (userId && !checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
       return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
     }
 
@@ -1116,7 +1119,7 @@ export async function rewriteWithToneAction(
   try {
     // Check rate limits for authenticated users
     const { userId } = await auth()
-    if (userId && !checkRateLimit(userId)) {
+    if (userId && !checkRateLimitKey(userId, DEFAULT_RATE_LIMIT_MAX)) {
       return { isSuccess: false, message: "Rate limit exceeded. Please try again later." }
     }
 
@@ -1396,12 +1399,17 @@ export async function analyzeTextWithContextAction(
       }
     }
 
-    // Check rate limits for authenticated users
-    const { userId: authUserId } = await auth()
-    if (authUserId && !checkRateLimit(authUserId)) {
+    // Check rate limits
+    const { userId: authUserId, sessionId } = await auth()
+    const key = sessionId || authUserId || "anonymous"
+    const isDemoUser = authUserId === process.env.DEMO_CLERK_USER_ID
+    const allowed = checkRateLimitKey(key, isDemoUser ? DEMO_RATE_LIMIT_MAX : DEFAULT_RATE_LIMIT_MAX)
+    if (!allowed) {
       return {
         isSuccess: false,
-        message: "Rate limit exceeded. Please try again later."
+        message: isDemoUser
+          ? "Demo rate limit reached. Please sign up for unlimited use."
+          : "Rate limit exceeded. Please try again later."
       }
     }
 
