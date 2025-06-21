@@ -37,7 +37,8 @@ import {
   Sun,
   Monitor,
   ArrowLeft,
-  Trash2
+  Trash2,
+  CreditCard
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -81,6 +82,17 @@ export default function SettingsPage() {
             <ArrowLeft className="size-4" />
             Back to App
           </Button>
+
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push("/settings/billing")}
+            className="flex items-center gap-2"
+          >
+            <CreditCard className="size-4" />
+            Manage Subscription
+          </Button>
+
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
             <p className="text-muted-foreground">
