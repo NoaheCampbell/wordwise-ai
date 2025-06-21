@@ -32,7 +32,8 @@ import {
   generateIdeasAction,
   generateEnhancedIdeasAction,
   saveIdeaAction,
-  analyzePastDocumentsAction
+  analyzePastDocumentsAction,
+  generateIdeasFromCorpusAction
 } from "@/actions/research-ideation-actions"
 import { getIdeasAction } from "@/actions/db/ideas-actions"
 import { GeneratedIdea, EnhancedDocumentAnalysis } from "@/types"
@@ -83,8 +84,9 @@ export function EnhancedIdeaGenerator({
   }, [isOpen, onClose])
 
   const generateIdeas = async (type: "headlines" | "topics" | "outlines") => {
-    // Check if we have any analysis to work with
-    if (!currentContent.trim() && !enhancedAnalysis) {
+    // Validation: if a specific document is open we need either content or analysis.
+    // When no documentId (landing page), we allow corpus-wide idea generation even with empty content.
+    if (documentId && !currentContent.trim() && !enhancedAnalysis) {
       toast.error(
         "Please add some content or wait for the analysis to complete to generate ideas."
       )
@@ -97,10 +99,13 @@ export function EnhancedIdeaGenerator({
       let result
 
       // Use enhanced generation if we have analysis data, otherwise fall back to basic generation
-      if (enhancedAnalysis) {
+      if (!documentId) {
+        // No specific document: generate ideas from entire corpus
+        result = await generateIdeasFromCorpusAction(type)
+      } else if (enhancedAnalysis) {
         result = await generateEnhancedIdeasAction(
           currentContent,
-          enhancedAnalysis,
+          enhancedAnalysis!,
           type
         )
       } else {

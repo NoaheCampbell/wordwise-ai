@@ -717,18 +717,12 @@ export function EnhancedEditor({ initialDocument }: EnhancedEditorProps) {
   }, [user, document, title, setProviderIsAnalyzing, reloadDocuments])
 
   useEffect(() => {
-    registerSuggestionCallbacks(
-      applySuggestionById,
-      dismissSuggestionById,
-      scrollToHighlight
-    )
-    registerGenerateNewIdeas(regenerateEnhancedAnalysis)
-  }, [
-    registerSuggestionCallbacks,
-    registerGenerateNewIdeas,
-    highlights,
-    regenerateEnhancedAnalysis
-  ])
+    if (document) {
+      registerGenerateNewIdeas(regenerateEnhancedAnalysis)
+    } else {
+      registerGenerateNewIdeas(async () => {})
+    }
+  }, [document, registerGenerateNewIdeas, regenerateEnhancedAnalysis])
 
   // Set up selection change listeners
   useEffect(() => {
