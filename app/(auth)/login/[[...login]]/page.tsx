@@ -18,13 +18,18 @@ export default function LoginPage() {
   const { isLoaded, signIn, setActive } = useSignIn()
   const router = useRouter()
 
+  const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL || ""
+  const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD || ""
+
   const handleDemoLogin = async () => {
     if (!isLoaded || !signIn) return
 
-    try {
-      const demoEmail = process.env.NEXT_PUBLIC_DEMO_EMAIL!
-      const demoPassword = process.env.NEXT_PUBLIC_DEMO_PASSWORD!
+    if (!demoEmail || !demoPassword) {
+      alert("Demo user is not configured. Please contact support.")
+      return
+    }
 
+    try {
       const attempt1 = await signIn.create({
         identifier: demoEmail,
         password: demoPassword
@@ -78,15 +83,17 @@ export default function LoginPage() {
         </Link>
 
         {/* Demo button */}
-        <div>
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            className="text-sm text-gray-600 underline hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
-          >
-            Try a live demo without an account
-          </button>
-        </div>
+        {demoEmail && demoPassword && (
+          <div>
+            <button
+              type="button"
+              onClick={handleDemoLogin}
+              className="text-sm text-gray-600 underline hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+            >
+              Try a live demo without an account
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
