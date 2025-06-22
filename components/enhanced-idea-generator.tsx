@@ -133,7 +133,7 @@ export function EnhancedIdeaGenerator({
       const result = await saveIdeaAction(idea, documentId)
       if (result.isSuccess) {
         toast.success(
-          "Idea saved successfully! You can find all saved ideas in the Research Panel."
+          "Idea saved successfully! You can find all saved ideas in the Ideas Hub."
         )
         // Remove from generated ideas
         setGeneratedIdeas(prev => prev.filter(i => i.title !== idea.title))
@@ -532,7 +532,7 @@ export function EnhancedIdeaGenerator({
                         {savedIdeasCount !== 1 ? "s" : ""} during this session!
                         <br />
                         <strong>
-                          Find all your saved ideas in the Research Panel
+                          Find all your saved ideas in the Ideas Hub
                         </strong>{" "}
                         (accessible from the editor toolbar).
                       </p>
