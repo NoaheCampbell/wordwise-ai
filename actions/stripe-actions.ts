@@ -228,34 +228,71 @@ export async function manageSubscriptionStatusChange(
 ) {
   const customerId = subscription.customer as string
 
-  const [profile] = await db
+  // 1) try find profile by stripeCustomerId
+  let [profile] = await db
     .select()
     .from(profilesTable)
     .where(eq(profilesTable.stripeCustomerId, customerId))
 
+  // 2) fallback: look up by userId in metadata
+  const metaUserId = (subscription.metadata as any)?.userId
+  if (!profile && metaUserId) {
+    ;[profile] = await db
+      .select()
+      .from(profilesTable)
+      .where(eq(profilesTable.id, metaUserId))
+  }
+
+  // 3) if still missing, create a new profile row
+  if (!profile && metaUserId) {
+    let email: string = ""
+    try {
+      const clerkInst = await clerkClient()
+      const user = await clerkInst.users.getUser(metaUserId)
+      email = user.emailAddresses[0]?.emailAddress || ""
+    } catch (e) {
+      console.error("Failed to fetch Clerk user for new profile", e)
+    }
+    if (!email) {
+      email = `no-email-${metaUserId}@example.com`
+    }
+
+    ;[profile] = await db
+      .insert(profilesTable)
+      .values({
+        id: metaUserId,
+        email,
+        membership: "free", // will update below
+        stripeCustomerId: customerId
+      })
+      .returning()
+  }
+
   if (!profile) {
-    console.warn(`No profile found for Stripe customer ${customerId}`)
+    console.warn(`No profile found for Stripe subscription ${subscription.id}`)
     return
   }
 
   const isActive =
     subscription.status === "active" || subscription.status === "trialing"
 
+  // 4) update DB with latest status & IDs
   await db
     .update(profilesTable)
     .set({
       membership: (isActive ? "pro" : "free") as any,
-      stripeSubscriptionId: subscription.id
+      stripeSubscriptionId: subscription.id,
+      stripeCustomerId: customerId
     })
     .where(eq(profilesTable.id, profile.id))
 
-  // Sync Clerk public metadata for edge checks
+  // 5) sync Clerk metadata so middleware has immediate truth
   try {
-    const clerk = await clerkClient()
-    await clerk.users.updateUser(profile.id, {
+    const clerkInst = await clerkClient()
+    await clerkInst.users.updateUser(profile.id, {
       publicMetadata: { membership: isActive ? "pro" : "free" }
     })
   } catch (e) {
-    console.error("Failed to update Clerk metadata", e)
+    console.error("Failed to sync Clerk metadata", e)
   }
 } 
