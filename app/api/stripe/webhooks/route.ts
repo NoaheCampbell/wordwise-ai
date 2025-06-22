@@ -12,15 +12,23 @@ export async function POST(req: Request) {
     console.error("Stripe webhook missing signature header")
     return new NextResponse("No signature", { status: 400 })
   }
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
+  const webhookSecretEnv = process.env.STRIPE_WEBHOOK_SECRET!
+  console.log("⮕ STRIPE_WEBHOOK_SECRET:", webhookSecretEnv)
+  const secrets = webhookSecretEnv.split(",")
 
-  let event: Stripe.Event
+  let event: Stripe.Event | null = null
+  for (const secret of secrets) {
+    try {
+      event = stripe.webhooks.constructEvent(bodyBuffer, sig, secret.trim())
+      break // verified successfully
+    } catch (_) {
+      // try next secret
+    }
+  }
 
-  try {
-    event = stripe.webhooks.constructEvent(bodyBuffer, sig, webhookSecret)
-  } catch (err: any) {
-    console.error(`❌ Error message: ${err.message}`)
-    return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 })
+  if (!event) {
+    console.error("Stripe webhook signature verification failed")
+    return new NextResponse("Invalid signature", { status: 400 })
   }
 
   try {
